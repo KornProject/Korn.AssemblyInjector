@@ -1,0 +1,4 @@
+﻿record ProcessModulesResolver(nint ProcessHandle)
+{
+
+}

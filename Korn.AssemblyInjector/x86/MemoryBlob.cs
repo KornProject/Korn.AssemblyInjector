@@ -1,6 +1,10 @@
-﻿record struct MemoryBlob(nint PageBase)
+﻿record struct MemoryBlob(nint ProcessHandle, nint PageBase)
 {
     public readonly nint PageBase;
+
+    public nint Position;
+
+    public void Write(params byte[] bytes) => Interop.WriteProcessMemory(ProcessHandle, Position, bytes, (uint)bytes.Length, out int written);
 
     public static MemoryBlob Allocate(nint processHandle, int initPageSize = 4096)
     {
@@ -9,6 +13,9 @@
 
         var pagebase = Interop.VirtualAllocEx(processHandle, unchecked((nint)0x7FFFFFFFFFFFFFFFUL), (uint)initPageSize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 
-        return new MemoryBlob(pagebase);
+        return new MemoryBlob(processHandle, pagebase)
+        {
+            Position = pagebase
+        };
     }
 }

@@ -14,12 +14,14 @@ public class Injector : IDisposable
     public void Inject(string assemblyPath)
     {
         const int PROCESS_ALL_ACCESS = 0x000F0000 | 0x00100000 | 0xFFFF;
-        var processHandle = Interop.OpenProcess(PROCESS_ALL_ACCESS, false, Process.Id);
-        unmanagedProcessHandle = processHandle;
+
+        var processHandle = unmanagedProcessHandle = Interop.OpenProcess(PROCESS_ALL_ACCESS, false, Process.Id);
 
         var memoryBlob = MemoryBlob.Allocate(processHandle);
+        Console.WriteLine(memoryBlob.PageBase);
 
-
+        var assembler = new Assembler(memoryBlob);
+        
     }
 
     bool disposed;

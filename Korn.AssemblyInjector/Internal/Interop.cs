@@ -12,4 +12,8 @@ static class Interop
 
     [DllImport(kernel)] public static extern 
         nint VirtualAllocEx(nint process, nint address, uint size, uint allocationType, uint protect);
+
+    [DllImport(kernel)] public static extern 
+        bool WriteProcessMemory(nint process, nint address, byte[] buffer, uint size, out int written);
+
 }
