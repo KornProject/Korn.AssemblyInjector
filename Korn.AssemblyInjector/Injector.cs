@@ -21,7 +21,11 @@ public class Injector : IDisposable
         Console.WriteLine(memoryBlob.PageBase);
 
         var assembler = new Assembler(memoryBlob);
-        
+        var moduleResolver = new ProcessModulesResolver(processHandle);
+
+        var hostfxr = moduleResolver.ResolveModule("hostfxr")!;
+        var func = hostfxr.ResolveExport("");
+
     }
 
     bool disposed;
