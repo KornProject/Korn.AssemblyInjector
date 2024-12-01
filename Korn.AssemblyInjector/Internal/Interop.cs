@@ -24,6 +24,8 @@ static unsafe class Interop
     [DllImport(kernel)] public static extern 
         bool ReadProcessMemory(nint process, nint address, byte[] buffer, uint size, out int written);
 
+    [DllImport(kernel)] public static extern 
+        nint CreateRemoteThread(nint process, nint threadAttribute, nint stackSize, nint startAddress, nint parameter, uint creationFlags, nint* threadId);
 
     [DllImport(psapi)] public static extern
         bool EnumProcessModules(nint process, nint* module, int size, int* needed);

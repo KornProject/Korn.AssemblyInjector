@@ -53,18 +53,18 @@ unsafe record ProcessModulesResolver(nint ProcessHandle)
     }
 }
 
-record ProcessModule(nint ProcessHandle, nint ModuleHandle, string Path, string Name, string NameWithExtension) 
+unsafe record ProcessModule(nint ProcessHandle, nint ModuleHandle, string Path, string Name, string NameWithExtension) 
 {
     ModuleExportsResolver? exportsResolver;
-    public nint ResolveExport(string export)
+    public nint ResolveExport(string name)
     {
         if (exportsResolver is null)
             exportsResolver = new(this);
 
-        return 0;
+        return exportsResolver.ResolveExport(name);
     }
 
-    unsafe class ModuleExportsResolver
+    class ModuleExportsResolver
     {
         public ModuleExportsResolver(ProcessModule module)
         {
@@ -74,5 +74,9 @@ record ProcessModule(nint ProcessHandle, nint ModuleHandle, string Path, string 
 
         public readonly ProcessModule Module;
         readonly RuntimePE PE;
+
+        public nint ResolveExport(string name) => ResolveExport(new ReadOnlySpan<byte>(Encoding.UTF8.GetBytes(name)));
+
+        public nint ResolveExport(ReadOnlySpan<byte> name) => PE.GetExportFunctionAddress(name);
     }
 }
