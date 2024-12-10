@@ -1,4 +1,6 @@
-﻿unsafe class AssemblerProcedure : Assembler
+﻿using Korn.Utils.Logger;
+
+unsafe class AssemblerProcedure : Assembler
 {
     public AssemblerProcedure(Assembler assembler, int stackSize = 0, ProcedureFlags flags = ProcedureFlags.None) : base(assembler.MemoryBlob)
     {
@@ -54,18 +56,18 @@
         var variable = Stack.CreateLocalVariable<T>();
 
         if (size > 8)
-            throw new Exception(
-                "[Korn.AssemblyInjector] Assembler->InitializeVariable<T>(string, T): " +
+            throw new KornError([
+                "Assembler->InitializeVariable<T>(string, T):", 
                 "Attempt to write too large a value to the stack. The maximum size of the value is 64 bits."
-            );
+            ]);
         else if (size == 8)
         {
             if (!Flags.HasFlag(ProcedureFlags.AllowStackValue64))
-                throw new Exception(
-                    "[Korn.AssemblyInjector] Assembler->InitializeVariable<T>(string, T): " +
-                    "Attempt to write a 64-bit value to the stack when 64-bit values are disallowed. " +
+                throw new KornError([
+                    "[Korn.AssemblyInjector] Assembler->InitializeVariable<T>(string, T):",
+                    "Attempt to write a 64-bit value to the stack when 64-bit values are disallowed.",
                     "Add AssemblerFlags.AllowStackValue64 to the assembler flags to allow these values."
-                );
+                ]);
         }
 
         var longValue = size switch
@@ -74,10 +76,10 @@
             4 => *(int*)&value,
             2 => *(short*)&value,
             1 => *(byte*)&value,
-            _ => throw new Exception(
-                "[Korn.AssemblyInjector] Assembler->InitializeVariable<T>(string, T): " +
-                "An unexpected size of the value. The size should be 64, 32, 16 or 8 bits"
-            )
+            _ => throw new KornError([
+                    "[Korn.AssemblyInjector] Assembler->InitializeVariable<T>(string, T):", 
+                    "An unexpected size of the value. The size should be 64, 32, 16 or 8 bits."
+                 ])
         };
 
         MovToRelativeRsp(variable.Offset, longValue);

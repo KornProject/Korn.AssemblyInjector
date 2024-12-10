@@ -39,6 +39,13 @@
 
     public MemoryBlob ExtractBlob(int start, int size) => new MemoryBlob(ProcessHandle, PageBase + start, size);
 
+    public void Free()
+    {
+        const uint MEM_RELEASE = 0x00008000;
+
+        Interop.VirtualFreeEx(ProcessHandle, PageBase, Size, MEM_RELEASE);
+    }
+
     public static MemoryBlob Allocate(nint processHandle, int initPageSize = 4096)
     {
         const int MEM_COMMIT = 0x1000;

@@ -1,0 +1,18 @@
+[Nov 30]
+It turned out that hostfxr doesn't work when injecting .netframework version framework, works only with CoreCLR supported versions: .netcore and .net.
+Also when trying to inject dlls into the target process of .netframework version only .netcore can be injected, not .net, 
+in this case a second VM is created, a newly created CoreCLR is added to the existing CLR.
+It has been tested, it is incredibly difficult to interact with the CLR from CoreCLR.
+
+[Dec 5]
+UnsafeInjector was started to replace HostfxrInjector to create a single algorithm for injection for CLR and CoreCLR, because hostfxr was useless for .netframework.
+
+[Dec 8]
+When calling CLR methods from a newly created native thread, the thread must be initialised by calling SetupThread from vm\threads.h.
+
+[Dec 9]
+The movaps instruction requires address alignment to 256 bits (16 bytes). This caused problems when calling memset from shellcode, 
+so need to write additional code in shellcode to align the stack before calling function.
+
+[Dec 10]
+In addition [Dec 8], it is also necessary to properly terminate the thread by calling ThreadStore::RemoveThread from vm\threads.h

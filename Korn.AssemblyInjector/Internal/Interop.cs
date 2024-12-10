@@ -19,13 +19,25 @@ static unsafe class Interop
         nint VirtualAllocEx(nint process, nint address, uint size, uint allocationType, uint protect);
 
     [DllImport(kernel)] public static extern 
+        bool VirtualFreeEx(nint process, nint address, int size, uint dwFreeType);
+
+    [DllImport(kernel)] public static extern 
         bool WriteProcessMemory(nint process, nint address, byte[] buffer, uint size, out int written);
 
     [DllImport(kernel)] public static extern 
         bool ReadProcessMemory(nint process, nint address, byte[] buffer, uint size, out int written);
 
+    [DllImport(kernel)] public static extern
+        nint GetProcAddress(nint module, [MarshalAs(UnmanagedType.LPStr)] string name);
+
+    [DllImport(kernel)] public static extern
+        nint GetModuleHandle([MarshalAs(UnmanagedType.LPWStr)] string name);
+
     [DllImport(kernel)] public static extern 
         nint CreateRemoteThread(nint process, nint threadAttribute, nint stackSize, nint startAddress, nint parameter, uint creationFlags, nint* threadId);
+
+    [DllImport(kernel)] public static extern 
+        uint WaitForSingleObject(nint handle, uint milliseconds);
 
     [DllImport(psapi)] public static extern
         bool EnumProcessModules(nint process, nint* module, int size, int* needed);
