@@ -261,14 +261,6 @@ public unsafe class UnsafeInjector : IDisposable
 
             return address;
         }
-
-        public nint ResolveTlsIndexAddress()
-        {
-            const int offset = 0x4878E0;
-
-            var address = CoreClrHandle + offset;
-            return address;
-        }
     }
 
     bool disposed;
