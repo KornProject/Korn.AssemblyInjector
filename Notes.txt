@@ -16,3 +16,6 @@ so need to write additional code in shellcode to align the stack before calling 
 
 [Dec 10]
 In addition [Dec 8], it is also necessary to properly terminate the thread by calling ThreadStore::RemoveThread from vm\threads.h
+
+[Dec 11]
+Have problems what CLR functions modify parts of the stack that should not be touched. Therefore, code was added to shellcode to fix this problem so that the thread would terminated normally

@@ -53,6 +53,7 @@ public unsafe class UnsafeInjector : IDisposable
         var setupThreadFunctionAddress = CoreClrResolver.ResolveSetupThread();
         var initializeFunctionAddress = CoreClrResolver.ResolveInitializeAssemblyLoadContext();
         var loadFunctionAddress = CoreClrResolver.ResolveLoadFromPath();
+        var removeThreadFunctionAddress = CoreClrResolver.ResolveRemoveThread();
         var tlsIndexAddress = CoreClrResolver.ResolveTlsIndexAddress();
         var tlsIndex = Interop.ReadProcessMemory<byte>(processHandle, tlsIndexAddress);
 
@@ -70,50 +71,60 @@ public unsafe class UnsafeInjector : IDisposable
         var code = allocatedMemory;
 
         /*
+         mov r13,[rsp]
          mov rbx,rcx
-         mov rax,FFFFFFFFFFFFFFFF
+         mov rax,---
          call rax
+         mov r12,rax
          mov rcx,0
          mov rdx,0
          mov r8,0
-         mov rax,FFFFFFFFFFFFFFFF
+         mov rax,---
          call rax
          mov rcx,rax
          mov rdx,rbx
          mov r8,0
-         mov r9,FFFFFFFFFFFFFFFF
-         mov rax,FFFFFFFFFFFFFFFF
+         mov r9,---
+         mov rax,---
+         sub rsp,8
          call rax
-         ret 
+         mov rcx,r12
+         mov rax,---
+         call rax
+         mov [rsp],r13
+         ret
         */
-
         byte[] shellcode = 
         [
-            0x48, 0x89, 0xCB,
-            0x48, 0xB8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // mov rax
-            0xFF, 0xD0, // call rax
-            0x48, 0xC7, 0xC1, 0x00, 0x00, 0x00, 0x00,
-            0x48, 0xC7, 0xC2, 0x00, 0x00, 0x00, 0x00,
-            0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
-            0x48, 0xB8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // mov rax
-            0xFF, 0xD0, // call rax
+            0x4C, 0x8B, 0x2C, 0x24,
+            0x48, 0x89, 0xCB, 
+            0x48, 0xB8, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 
+            0xFF, 0xD0, 
+            0x49, 0x89, 0xC4, 
+            0x48, 0xC7, 0xC1, 0x00, 0x00, 0x00, 0x00, 
+            0x48, 0xC7, 0xC2, 0x00, 0x00, 0x00, 0x00, 
+            0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00, 
+            0x48, 0xB8, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
+            0xFF, 0xD0, 
             0x48, 0x89, 0xC1,
             0x48, 0x89, 0xDA,
             0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
-            0x49, 0xB9, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 4-th arg
-            0x48, 0xB8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // mov rax
-            0x48, 0x83, 0xEC, 0x08, 
-            0xFF, 0xD0, // call rax
-            0x48, 0x83, 0xC4, 0x08,
-            //0xC3 // ret
-            0xEB, 0xFE // self jump
+            0x49, 0xB9, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
+            0x48, 0xB8, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
+            0x48, 0x83, 0xEC, 0x08,
+            0xFF, 0xD0,
+            0x4C, 0x89, 0xE1, 
+            0x48, 0xB8, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 
+            0xFF, 0xD0,
+            0x4C, 0x89, 0x2C, 0x24,
+            0xC3
         ];
         Interop.WriteProcessMemory(processHandle, allocatedMemory, shellcode);  
 
-        allocatedMemory += 3 + 2;
+        allocatedMemory += 4 + 3 + 2;
         Interop.WriteProcessMemory(processHandle, allocatedMemory, BitConverter.GetBytes(setupThreadFunctionAddress));
 
-        allocatedMemory += 8 + 2 + 7 + 7 + 7 + 2;
+        allocatedMemory += 8 + 2 + 3 + 7 + 7 + 7 + 2;
         Interop.WriteProcessMemory(processHandle, allocatedMemory, BitConverter.GetBytes(initializeFunctionAddress));
 
         allocatedMemory += 8 + 2 + 3 + 3 + 7 + 2;
@@ -121,6 +132,9 @@ public unsafe class UnsafeInjector : IDisposable
 
         allocatedMemory += 8 + 2;
         Interop.WriteProcessMemory(processHandle, allocatedMemory, BitConverter.GetBytes(loadFunctionAddress));
+
+        allocatedMemory += 8 + 4 + 2 + 3 + 2;
+        Interop.WriteProcessMemory(processHandle, allocatedMemory, BitConverter.GetBytes(removeThreadFunctionAddress));
 
         allocatedMemory += shellcode.Length;
 
@@ -152,6 +166,26 @@ public unsafe class UnsafeInjector : IDisposable
         public readonly nint ProcessHandle;
         public readonly ProcessModulesResolver ModulesResolver;
         public readonly nint CoreClrHandle;
+        const string UnsupportedVMVersionMessage = "Most likely used an unsupported version of CoreClr, i.e. the .Net version.";
+        const string FunctionUnderDebbugerMessage = "Also maybe this function is currently under debugger, which prevents it from working correctly.";
+
+        public nint ResolveSetupThread()
+        {
+            const int offset = 0x6BAE8;
+
+            var address = CoreClrHandle + offset;
+
+            var checkNumber = BitConverter.ToUInt64(Interop.ReadProcessMemory(ProcessHandle, address, 8));
+            if (checkNumber != 0x4155415756535540UL)
+                throw new KornError([
+                    "UnsafeInjector.CoreClrFunctionResolver->ResolveSetupThread:",
+                    "Used an incorrect offset to resolve function SetupThread.",
+                    UnsupportedVMVersionMessage,
+                    FunctionUnderDebbugerMessage
+                ]);
+
+            return address;
+        }
 
         public nint ResolveInitializeAssemblyLoadContext()
         {
@@ -164,7 +198,8 @@ public unsafe class UnsafeInjector : IDisposable
                 throw new KornError([
                     "UnsafeInjector.CoreClrResolver->ResolveInitializeAssemblyLoadContext:",
                     "Used an incorrect offset to resolve function InitializeAssemblyLoadContext.",
-                    "Most likely used an unsupported version of CoreClr, i.e. the .Net version.",
+                    UnsupportedVMVersionMessage,
+                    FunctionUnderDebbugerMessage
                 ]);
 
             return address;
@@ -181,24 +216,44 @@ public unsafe class UnsafeInjector : IDisposable
                 throw new KornError([
                     "UnsafeInjector.CoreClrFunctionResolver->ResolveLoadFromPath:",
                     "Used an incorrect offset to resolve function LoadFromPath.",
-                    "Most likely used an unsupported version of CoreClr, i.e. the .Net version.",
+                    UnsupportedVMVersionMessage,
+                    FunctionUnderDebbugerMessage
                 ]);
 
             return address;
         }
 
-        public nint ResolveSetupThread()
+        public nint ResolveExecuteMainMethod()
         {
-            const int offset = 0x6BAE8;
+            const int offset = 0xF17C4;
 
             var address = CoreClrHandle + offset;
 
             var checkNumber = BitConverter.ToUInt64(Interop.ReadProcessMemory(ProcessHandle, address, 8));
-            if (checkNumber != 0x4155415756535540UL)
+            if (checkNumber != 0x57565518245C8948)
                 throw new KornError([
-                    "UnsafeInjector.CoreClrFunctionResolver->ResolveSetupThread:",
-                    "Used an incorrect offset to resolve function SetupThread.",
-                    "Most likely used an unsupported version of CoreClr, i.e. the .Net version.",
+                    "UnsafeInjector.CoreClrFunctionResolver->ResolveExecuteMainMethod:",
+                    "Used an incorrect offset to resolve function ExecuteMainMethod.",
+                    UnsupportedVMVersionMessage,
+                    FunctionUnderDebbugerMessage
+                ]);
+
+            return address;
+        }        
+
+        public nint ResolveRemoveThread()
+        {
+            const int offset = 0x622A8;
+
+            var address = CoreClrHandle + offset;
+
+            var checkNumber = BitConverter.ToUInt64(Interop.ReadProcessMemory(ProcessHandle, address, 8));
+            if (checkNumber != 0x8B4C20EC83485340UL)
+                throw new KornError([
+                    "UnsafeInjector.CoreClrFunctionResolver->ResolveRemoveThread:",
+                    "Used an incorrect offset to resolve function RemoveThread.",
+                    UnsupportedVMVersionMessage,
+                    FunctionUnderDebbugerMessage
                 ]);
 
             return address;
