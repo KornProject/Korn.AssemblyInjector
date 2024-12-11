@@ -50,10 +50,11 @@ public unsafe class UnsafeInjector : IDisposable
         const uint INFINITE = 0xFFFFFFFF;
 
         var CoreClrResolver = new CoreClrResolver(processHandle, modulesResolver);
-        var setupThreadFunctionAddress = CoreClrResolver.ResolveSetupThread();
-        var initializeFunctionAddress = CoreClrResolver.ResolveInitializeAssemblyLoadContext();
-        var loadFunctionAddress = CoreClrResolver.ResolveLoadFromPath();
-        var removeThreadFunctionAddress = CoreClrResolver.ResolveRemoveThread();
+        var setupThreadFunction = CoreClrResolver.ResolveSetupThread();
+        var initializeFunction = CoreClrResolver.ResolveInitializeAssemblyLoadContext();
+        var loadFunction = CoreClrResolver.ResolveLoadFromPath();
+        var executeMainFunction = CoreClrResolver.ResolveExecuteMainMethod();
+        var removeThreadFunction = CoreClrResolver.ResolveRemoveThread();
         var tlsIndexAddress = CoreClrResolver.ResolveTlsIndexAddress();
         var tlsIndex = Interop.ReadProcessMemory<byte>(processHandle, tlsIndexAddress);
 
@@ -64,9 +65,21 @@ public unsafe class UnsafeInjector : IDisposable
         Interop.WriteProcessMemory(processHandle, allocatedMemory, pathBytes);
         allocatedMemory += pathBytes.Length + 2;
 
-        var locals = allocatedMemory;
-        var loaderContextAddress = locals;
-        allocatedMemory += 8;
+        var localLoadedAssembly = allocatedMemory;
+        allocatedMemory += 0x08;
+
+        var localArgumentsArray = allocatedMemory;
+        allocatedMemory += 0x18;
+
+        var localArgumentsArrayPointer = allocatedMemory;
+        Interop.WriteProcessMemory(processHandle, localArgumentsArrayPointer, BitConverter.GetBytes(localArgumentsArray));
+        allocatedMemory += 0x08;
+
+        /*
+        var localArgumentsArrayPointerPointer = allocatedMemory;
+        Interop.WriteProcessMemory(processHandle, localArgumentsArrayPointerPointer, BitConverter.GetBytes(localArgumentsArrayPointer));
+        allocatedMemory += 0x08;
+        */
 
         var code = allocatedMemory;
 
@@ -93,50 +106,40 @@ public unsafe class UnsafeInjector : IDisposable
          call rax
          mov [rsp],r13
          ret
-        */
+        */ // not updated
         byte[] shellcode = 
         [
             0x4C, 0x8B, 0x2C, 0x24,
             0x48, 0x89, 0xCB, 
-            0x48, 0xB8, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 
+            0x48, 0xB8, ..BitConverter.GetBytes(setupThreadFunction), 
             0xFF, 0xD0, 
             0x49, 0x89, 0xC4, 
             0x48, 0xC7, 0xC1, 0x00, 0x00, 0x00, 0x00, 
             0x48, 0xC7, 0xC2, 0x00, 0x00, 0x00, 0x00, 
             0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00, 
-            0x48, 0xB8, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
+            0x48, 0xB8, ..BitConverter.GetBytes(initializeFunction),
             0xFF, 0xD0, 
             0x48, 0x89, 0xC1,
             0x48, 0x89, 0xDA,
             0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
-            0x49, 0xB9, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
-            0x48, 0xB8, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
+            0x49, 0xB9, ..BitConverter.GetBytes(localLoadedAssembly),
+            0x48, 0xB8, ..BitConverter.GetBytes(loadFunction),
             0x48, 0x83, 0xEC, 0x08,
             0xFF, 0xD0,
+            0x48, 0xB8, ..BitConverter.GetBytes(localLoadedAssembly),
+            0x48, 0x8B, 0x08, 
+            0x48, 0xBA, ..BitConverter.GetBytes(localArgumentsArrayPointer),
+            0x49, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00, 
+            0x48, 0xB8, ..BitConverter.GetBytes(executeMainFunction),
+            0xFF, 0xD0,
             0x4C, 0x89, 0xE1, 
-            0x48, 0xB8, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 
+            0x48, 0xB8, ..BitConverter.GetBytes(removeThreadFunction), 
             0xFF, 0xD0,
             0x4C, 0x89, 0x2C, 0x24,
             0xC3
         ];
+
         Interop.WriteProcessMemory(processHandle, allocatedMemory, shellcode);  
-
-        allocatedMemory += 4 + 3 + 2;
-        Interop.WriteProcessMemory(processHandle, allocatedMemory, BitConverter.GetBytes(setupThreadFunctionAddress));
-
-        allocatedMemory += 8 + 2 + 3 + 7 + 7 + 7 + 2;
-        Interop.WriteProcessMemory(processHandle, allocatedMemory, BitConverter.GetBytes(initializeFunctionAddress));
-
-        allocatedMemory += 8 + 2 + 3 + 3 + 7 + 2;
-        Interop.WriteProcessMemory(processHandle, allocatedMemory, BitConverter.GetBytes(loaderContextAddress));
-
-        allocatedMemory += 8 + 2;
-        Interop.WriteProcessMemory(processHandle, allocatedMemory, BitConverter.GetBytes(loadFunctionAddress));
-
-        allocatedMemory += 8 + 4 + 2 + 3 + 2;
-        Interop.WriteProcessMemory(processHandle, allocatedMemory, BitConverter.GetBytes(removeThreadFunctionAddress));
-
-        allocatedMemory += shellcode.Length;
 
         var threadID = Interop.CreateRemoteThread(processHandle, 0, 0, code, data, 0, (nint*)0);
         Interop.WaitForSingleObject(threadID, INFINITE);
