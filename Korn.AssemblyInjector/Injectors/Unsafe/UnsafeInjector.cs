@@ -52,11 +52,11 @@ public unsafe class UnsafeInjector : IDisposable
         var CoreClrResolver = new CoreClrResolver(processHandle, modulesResolver);
         var setupThreadFunction = CoreClrResolver.ResolveSetupThread();
         var initializeFunction = CoreClrResolver.ResolveInitializeAssemblyLoadContext();
-        var loadFunction = CoreClrResolver.ResolveLoadFromPath();
+        var loadAssemblyFunction = CoreClrResolver.ResolveLoadFromPath();
         var executeMainFunction = CoreClrResolver.ResolveExecuteMainMethod();
         var removeThreadFunction = CoreClrResolver.ResolveRemoveThread();
-        var tlsIndexAddress = CoreClrResolver.ResolveTlsIndexAddress();
-        var tlsIndex = Interop.ReadProcessMemory<byte>(processHandle, tlsIndexAddress);
+
+        var assemblyBinder = GetAssemblyBinder();
 
         var allocatedMemory = Interop.VirtualAllocEx(processHandle, 0, 0x1000, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 
@@ -75,38 +75,11 @@ public unsafe class UnsafeInjector : IDisposable
         Interop.WriteProcessMemory(processHandle, localArgumentsArrayPointer, BitConverter.GetBytes(localArgumentsArray));
         allocatedMemory += 0x08;
 
-        /*
-        var localArgumentsArrayPointerPointer = allocatedMemory;
-        Interop.WriteProcessMemory(processHandle, localArgumentsArrayPointerPointer, BitConverter.GetBytes(localArgumentsArrayPointer));
-        allocatedMemory += 0x08;
-        */
-
         var code = allocatedMemory;
 
         /*
-         mov r13,[rsp]
-         mov rbx,rcx
-         mov rax,---
-         call rax
-         mov r12,rax
-         mov rcx,0
-         mov rdx,0
-         mov r8,0
-         mov rax,---
-         call rax
-         mov rcx,rax
-         mov rdx,rbx
-         mov r8,0
-         mov r9,---
-         mov rax,---
-         sub rsp,8
-         call rax
-         mov rcx,r12
-         mov rax,---
-         call rax
-         mov [rsp],r13
-         ret
-        */ // not updated
+         
+        */
         byte[] shellcode = 
         [
             0x4C, 0x8B, 0x2C, 0x24,
@@ -123,15 +96,19 @@ public unsafe class UnsafeInjector : IDisposable
             0x48, 0x89, 0xDA,
             0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
             0x49, 0xB9, ..BitConverter.GetBytes(localLoadedAssembly),
-            0x48, 0xB8, ..BitConverter.GetBytes(loadFunction),
+            0x48, 0xB8, ..BitConverter.GetBytes(loadAssemblyFunction),
             0x48, 0x83, 0xEC, 0x08,
             0xFF, 0xD0,
+            /*
             0x48, 0xB8, ..BitConverter.GetBytes(localLoadedAssembly),
-            0x48, 0x8B, 0x08, 
+            0x48, 0x8B, 0x00,
+            0x48, 0x8B, 0x40, 0x20,
+            0x48, 0x8B, 0x08,
             0x48, 0xBA, ..BitConverter.GetBytes(localArgumentsArrayPointer),
-            0x49, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00, 
+            0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00, 
             0x48, 0xB8, ..BitConverter.GetBytes(executeMainFunction),
             0xFF, 0xD0,
+            */
             0x4C, 0x89, 0xE1, 
             0x48, 0xB8, ..BitConverter.GetBytes(removeThreadFunction), 
             0xFF, 0xD0,
@@ -144,6 +121,17 @@ public unsafe class UnsafeInjector : IDisposable
         var threadID = Interop.CreateRemoteThread(processHandle, 0, 0, code, data, 0, (nint*)0);
         Interop.WaitForSingleObject(threadID, INFINITE);
         Interop.VirtualFreeEx(processHandle, allocatedMemory, 0x1000, MEM_RELEASE);
+
+        nint GetAssemblyBinder()
+        {
+            var appDomain = Interop.ReadProcessMemory<nint>(processHandle, CoreClrResolver.ResolveAppDomainAddress()); // TheAppDomain
+            var assembly = Interop.ReadProcessMemory<nint>(processHandle, appDomain + 0x590); // RootAssembly
+            var peAssembly = Interop.ReadProcessMemory<nint>(processHandle, assembly + 0x20); // PEAssembly
+            var hostAssembly = Interop.ReadProcessMemory<nint>(processHandle, peAssembly + 0x38); // HostAssembly
+            var binder = Interop.ReadProcessMemory<nint>(processHandle, hostAssembly + 0x20); // AssemblyBinder
+
+            return binder;
+        }
     }
 
     public readonly Process Process;
@@ -171,6 +159,16 @@ public unsafe class UnsafeInjector : IDisposable
         public readonly nint CoreClrHandle;
         const string UnsupportedVMVersionMessage = "Most likely used an unsupported version of CoreClr, i.e. the .Net version.";
         const string FunctionUnderDebbugerMessage = "Also maybe this function is currently under debugger, which prevents it from working correctly.";
+
+        public nint ResolveAppDomainAddress()
+        {
+            const int offset = 0x488080;
+
+            var address = CoreClrHandle + offset;
+            // no check
+
+            return address;
+        }
 
         public nint ResolveSetupThread()
         {
