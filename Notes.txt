@@ -27,6 +27,10 @@ Also noticed cool method in AppDomain - ExecuteAssembly. Looks good since you do
 On the downside, for a dll to be injected, you need to select the "build in exe" option so that EntryPoint appears in the NetHeader of its dll.
 The code will be rewritten to use ExecuteAssembly instead of LoadFromPath and ExecuteMainMethod.
 
-[Dec 12]
+[Dec 12 #0]
 It turned out that it is possible to load the library with an incorrectly initialized AssembyLoadContext, but it will be impossible to use it further.
 For this reason, I will either have to initialize the AssembyLoadContext, which is extremely difficult, or take a ready-made one and hope that it will work.
+
+[Dec 12 #1]
+ExecuteMainMethod has "waitForOtherThreads" logic, but actually in the assembly code you can see that it just doesn't do anything.
+That's why ExecuteMain creates a thread that waits for all other threads to finish running.

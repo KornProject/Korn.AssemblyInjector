@@ -1,5 +1,7 @@
 ﻿using Korn.Utils.Logger;
+using System;
 using System.Diagnostics;
+using System.Reflection;
 using System.Text;
 
 namespace Korn.AssemblyInjector;
@@ -78,28 +80,48 @@ public unsafe class UnsafeInjector : IDisposable
         var code = allocatedMemory;
 
         /*
-         
+         mov r14,---
+         mov r13,[rsp]
+         mov rbx,rcx
+         mov rax,<coreclr.SetupThread>
+         call rax
+         mov r12,rax
+         mov rcx,r14
+         mov rdx,rbx
+         mov r8,0
+         mov r9,---
+         mov rax,<coreclr.LoadFromPath>
+         sub rsp,8
+         call rax
+         mov rax,---
+         mov rax,qword ptr ds:[rax]
+         mov rax,qword ptr ds:[rax+20]
+         mov rcx,qword ptr ds:[rax]
+         mov rdx,---
+         mov r8,0
+         mov rax,<coreclr.ExecuteMainMethod>
+         call rax
+         mov rcx,r12
+         mov rax,<coreclr.RemoveThread>
+         call rax
+         mov [rsp],r13
+         ret 
         */
         byte[] shellcode = 
         [
+            0x49, 0xBE, ..BitConverter.GetBytes(assemblyBinder),
             0x4C, 0x8B, 0x2C, 0x24,
             0x48, 0x89, 0xCB, 
             0x48, 0xB8, ..BitConverter.GetBytes(setupThreadFunction), 
             0xFF, 0xD0, 
-            0x49, 0x89, 0xC4, 
-            0x48, 0xC7, 0xC1, 0x00, 0x00, 0x00, 0x00, 
-            0x48, 0xC7, 0xC2, 0x00, 0x00, 0x00, 0x00, 
-            0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00, 
-            0x48, 0xB8, ..BitConverter.GetBytes(initializeFunction),
-            0xFF, 0xD0, 
-            0x48, 0x89, 0xC1,
+            0x49, 0x89, 0xC4,
+            0x4C, 0x89, 0xF1,
             0x48, 0x89, 0xDA,
             0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
             0x49, 0xB9, ..BitConverter.GetBytes(localLoadedAssembly),
             0x48, 0xB8, ..BitConverter.GetBytes(loadAssemblyFunction),
             0x48, 0x83, 0xEC, 0x08,
             0xFF, 0xD0,
-            /*
             0x48, 0xB8, ..BitConverter.GetBytes(localLoadedAssembly),
             0x48, 0x8B, 0x00,
             0x48, 0x8B, 0x40, 0x20,
@@ -108,7 +130,6 @@ public unsafe class UnsafeInjector : IDisposable
             0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00, 
             0x48, 0xB8, ..BitConverter.GetBytes(executeMainFunction),
             0xFF, 0xD0,
-            */
             0x4C, 0x89, 0xE1, 
             0x48, 0xB8, ..BitConverter.GetBytes(removeThreadFunction), 
             0xFF, 0xD0,
@@ -122,16 +143,14 @@ public unsafe class UnsafeInjector : IDisposable
         Interop.WaitForSingleObject(threadID, INFINITE);
         Interop.VirtualFreeEx(processHandle, allocatedMemory, 0x1000, MEM_RELEASE);
 
-        nint GetAssemblyBinder()
-        {
-            var appDomain = Interop.ReadProcessMemory<nint>(processHandle, CoreClrResolver.ResolveAppDomainAddress()); // TheAppDomain
-            var assembly = Interop.ReadProcessMemory<nint>(processHandle, appDomain + 0x590); // RootAssembly
-            var peAssembly = Interop.ReadProcessMemory<nint>(processHandle, assembly + 0x20); // PEAssembly
-            var hostAssembly = Interop.ReadProcessMemory<nint>(processHandle, peAssembly + 0x38); // HostAssembly
-            var binder = Interop.ReadProcessMemory<nint>(processHandle, hostAssembly + 0x20); // AssemblyBinder
-
-            return binder;
-        }
+        // &TheAppDomain->RootAssembly->PEAssembly->HostAssembly->AssemblyBinder
+        nint GetAssemblyBinder() =>
+            Interop.ReadProcessMemory<nint>(processHandle, 
+                Interop.ReadProcessMemory<nint>(processHandle,
+                    Interop.ReadProcessMemory<nint>(processHandle,
+                        Interop.ReadProcessMemory<nint>(processHandle, 
+                            Interop.ReadProcessMemory<nint>(processHandle, 
+                                CoreClrResolver.ResolveAppDomainAddress()) + 0x590) + 0x20) + 0x38) + 0x20);
     }
 
     public readonly Process Process;
