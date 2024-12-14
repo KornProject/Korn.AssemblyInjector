@@ -18,6 +18,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Project Files", "Project Fi
 		Notes.txt = Notes.txt
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Korn.Utils.UnsafePDBResolver", "..\Korn.Utils.UnsafePDBResolver\Korn.Utils.UnsafePDBResolver\Korn.Utils.UnsafePDBResolver.csproj", "{78B0D718-404A-470E-BCB0-AB8A1E9C5D85}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -58,6 +60,14 @@ Global
 		{16571D32-ED1C-4E1C-90DC-C97D7EBD7B16}.Release|Any CPU.Build.0 = Release|x64
 		{16571D32-ED1C-4E1C-90DC-C97D7EBD7B16}.Release|x64.ActiveCfg = Release|x64
 		{16571D32-ED1C-4E1C-90DC-C97D7EBD7B16}.Release|x64.Build.0 = Release|x64
+		{78B0D718-404A-470E-BCB0-AB8A1E9C5D85}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{78B0D718-404A-470E-BCB0-AB8A1E9C5D85}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{78B0D718-404A-470E-BCB0-AB8A1E9C5D85}.Debug|x64.ActiveCfg = Debug|x64
+		{78B0D718-404A-470E-BCB0-AB8A1E9C5D85}.Debug|x64.Build.0 = Debug|x64
+		{78B0D718-404A-470E-BCB0-AB8A1E9C5D85}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{78B0D718-404A-470E-BCB0-AB8A1E9C5D85}.Release|Any CPU.Build.0 = Release|Any CPU
+		{78B0D718-404A-470E-BCB0-AB8A1E9C5D85}.Release|x64.ActiveCfg = Release|x64
+		{78B0D718-404A-470E-BCB0-AB8A1E9C5D85}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -65,5 +75,6 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{6BEFF572-ADCF-4691-94BC-037941FDAB22} = {8307BFFC-5A43-4CC1-8CE7-457E1E9EA03A}
 		{16571D32-ED1C-4E1C-90DC-C97D7EBD7B16} = {8307BFFC-5A43-4CC1-8CE7-457E1E9EA03A}
+		{78B0D718-404A-470E-BCB0-AB8A1E9C5D85} = {8307BFFC-5A43-4CC1-8CE7-457E1E9EA03A}
 	EndGlobalSection
 EndGlobal

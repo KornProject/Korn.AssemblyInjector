@@ -1,4 +1,5 @@
 ﻿using Korn.Utils.Logger;
+using Korn.Utils.UnsafePDBResolver;
 using System;
 using System.Diagnostics;
 using System.Reflection;
@@ -140,8 +141,9 @@ public unsafe class UnsafeInjector : IDisposable
         Interop.WriteProcessMemory(processHandle, allocatedMemory, shellcode);  
 
         var threadID = Interop.CreateRemoteThread(processHandle, 0, 0, code, data, 0, (nint*)0);
-        Interop.WaitForSingleObject(threadID, INFINITE);
-        Interop.VirtualFreeEx(processHandle, allocatedMemory, 0x1000, MEM_RELEASE);
+        /* Removed for reasons of the second argument not working. See [Dec 12 #1] in Notes.txt */
+        //Interop.WaitForSingleObject(threadID, INFINITE);
+        //Interop.VirtualFreeEx(processHandle, allocatedMemory, 0x1000, MEM_RELEASE);
 
         // &TheAppDomain->RootAssembly->PEAssembly->HostAssembly->AssemblyBinder
         nint GetAssemblyBinder() =>
@@ -175,6 +177,7 @@ public unsafe class UnsafeInjector : IDisposable
 
         public readonly nint ProcessHandle;
         public readonly ProcessModulesResolver ModulesResolver;
+        public readonly PdbResolver PdbResolver;
         public readonly nint CoreClrHandle;
         const string UnsupportedVMVersionMessage = "Most likely used an unsupported version of CoreClr, i.e. the .Net version.";
         const string FunctionUnderDebbugerMessage = "Also maybe this function is currently under debugger, which prevents it from working correctly.";
