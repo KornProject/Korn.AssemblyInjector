@@ -1,8 +1,5 @@
 ﻿using Korn.Utils.Logger;
-using Korn.Utils.UnsafePDBResolver;
-using System;
 using System.Diagnostics;
-using System.Reflection;
 using System.Text;
 
 namespace Korn.AssemblyInjector;
@@ -33,6 +30,8 @@ public unsafe class UnsafeInjector : IDisposable
     readonly nint processHandle;
     readonly bool isCoreClr;
 
+    public readonly Process Process;
+
     public void Inject(string path)
     {
         if (isCoreClr)
@@ -42,7 +41,7 @@ public unsafe class UnsafeInjector : IDisposable
 
     void InjectInClr(string path)
     {
-
+        throw new NotImplementedException();
     }
 
     void InjectInCoreClr(string path)
@@ -52,12 +51,12 @@ public unsafe class UnsafeInjector : IDisposable
         const uint MEM_RELEASE = 0x00008000;
         const uint INFINITE = 0xFFFFFFFF;
 
-        var CoreClrResolver = new CoreClrResolver(processHandle, modulesResolver);
-        var setupThreadFunction = CoreClrResolver.ResolveSetupThread();
-        var initializeFunction = CoreClrResolver.ResolveInitializeAssemblyLoadContext();
-        var loadAssemblyFunction = CoreClrResolver.ResolveLoadFromPath();
-        var executeMainFunction = CoreClrResolver.ResolveExecuteMainMethod();
-        var removeThreadFunction = CoreClrResolver.ResolveRemoveThread();
+        using var coreClrResolver = new CoreClrResolver(processHandle, modulesResolver);
+        var setupThreadFunction = coreClrResolver.ResolveSetupThread();
+        var initializeFunction = coreClrResolver.ResolveInitializeAssemblyLoadContext();
+        var loadAssemblyFunction = coreClrResolver.ResolveLoadFromPath();
+        var executeMainFunction = coreClrResolver.ResolveExecuteMainMethod();
+        var removeThreadFunction = coreClrResolver.ResolveRemoveThread();
 
         var assemblyBinder = GetAssemblyBinder();
 
@@ -122,7 +121,7 @@ public unsafe class UnsafeInjector : IDisposable
             0x49, 0xB9, ..BitConverter.GetBytes(localLoadedAssembly),
             0x48, 0xB8, ..BitConverter.GetBytes(loadAssemblyFunction),
             0x48, 0x83, 0xEC, 0x08,
-            0xFF, 0xD0,
+            0xFF, 0xD0, 
             0x48, 0xB8, ..BitConverter.GetBytes(localLoadedAssembly),
             0x48, 0x8B, 0x00,
             0x48, 0x8B, 0x40, 0x20,
@@ -145,6 +144,7 @@ public unsafe class UnsafeInjector : IDisposable
         //Interop.WaitForSingleObject(threadID, INFINITE);
         //Interop.VirtualFreeEx(processHandle, allocatedMemory, 0x1000, MEM_RELEASE);
 
+        // Offsets of structures may be change with different .net x.0.0 versions. Required tests
         // &TheAppDomain->RootAssembly->PEAssembly->HostAssembly->AssemblyBinder
         nint GetAssemblyBinder() =>
             Interop.ReadProcessMemory<nint>(processHandle, 
@@ -152,136 +152,8 @@ public unsafe class UnsafeInjector : IDisposable
                     Interop.ReadProcessMemory<nint>(processHandle,
                         Interop.ReadProcessMemory<nint>(processHandle, 
                             Interop.ReadProcessMemory<nint>(processHandle, 
-                                CoreClrResolver.ResolveAppDomainAddress()) + 0x590) + 0x20) + 0x38) + 0x20);
-    }
-
-    public readonly Process Process;
-
-    class CoreClrResolver
-    {
-        public CoreClrResolver(nint processHandle) : this(processHandle, new(processHandle)) { }
-
-        public CoreClrResolver(nint processHandle, ProcessModulesResolver modulesResolver)
-        {
-            ProcessHandle = processHandle;
-            ModulesResolver = modulesResolver;
-            var module = ModulesResolver.ResolveModule("coreclr");
-            if (module is null)
-                throw new KornError([
-                    "UnsafeInjector.CoreClrResolver->.ctor(nint, ProcessModulesResolver):",
-                    $"CoreClr module not found in target process"
-                ]);
-
-            CoreClrHandle = module.ModuleHandle;
-        }
-
-        public readonly nint ProcessHandle;
-        public readonly ProcessModulesResolver ModulesResolver;
-        public readonly PdbResolver PdbResolver;
-        public readonly nint CoreClrHandle;
-        const string UnsupportedVMVersionMessage = "Most likely used an unsupported version of CoreClr, i.e. the .Net version.";
-        const string FunctionUnderDebbugerMessage = "Also maybe this function is currently under debugger, which prevents it from working correctly.";
-
-        public nint ResolveAppDomainAddress()
-        {
-            const int offset = 0x488080;
-
-            var address = CoreClrHandle + offset;
-            // no check
-
-            return address;
-        }
-
-        public nint ResolveSetupThread()
-        {
-            const int offset = 0x6BAE8;
-
-            var address = CoreClrHandle + offset;
-
-            var checkNumber = BitConverter.ToUInt64(Interop.ReadProcessMemory(ProcessHandle, address, 8));
-            if (checkNumber != 0x4155415756535540UL)
-                throw new KornError([
-                    "UnsafeInjector.CoreClrFunctionResolver->ResolveSetupThread:",
-                    "Used an incorrect offset to resolve function SetupThread.",
-                    UnsupportedVMVersionMessage,
-                    FunctionUnderDebbugerMessage
-                ]);
-
-            return address;
-        }
-
-        public nint ResolveInitializeAssemblyLoadContext()
-        {
-            const int offset = 0x130300;
-
-            var address = CoreClrHandle + offset;
-
-            var checkNumber = BitConverter.ToUInt64(Interop.ReadProcessMemory(ProcessHandle, address, 8));
-            if (checkNumber != 0x49085B8949DC8B4CUL)
-                throw new KornError([
-                    "UnsafeInjector.CoreClrResolver->ResolveInitializeAssemblyLoadContext:",
-                    "Used an incorrect offset to resolve function InitializeAssemblyLoadContext.",
-                    UnsupportedVMVersionMessage,
-                    FunctionUnderDebbugerMessage
-                ]);
-
-            return address;
-        }
-
-        public nint ResolveLoadFromPath()
-        {
-            const int offset = 0xF1320;
-
-            var address = CoreClrHandle + offset;
-
-            var checkNumber = BitConverter.ToUInt64(Interop.ReadProcessMemory(ProcessHandle, address, 8));
-            if (checkNumber != 0x49085B8949DC8B4CUL)
-                throw new KornError([
-                    "UnsafeInjector.CoreClrFunctionResolver->ResolveLoadFromPath:",
-                    "Used an incorrect offset to resolve function LoadFromPath.",
-                    UnsupportedVMVersionMessage,
-                    FunctionUnderDebbugerMessage
-                ]);
-
-            return address;
-        }
-
-        public nint ResolveExecuteMainMethod()
-        {
-            const int offset = 0xF17C4;
-
-            var address = CoreClrHandle + offset;
-
-            var checkNumber = BitConverter.ToUInt64(Interop.ReadProcessMemory(ProcessHandle, address, 8));
-            if (checkNumber != 0x57565518245C8948)
-                throw new KornError([
-                    "UnsafeInjector.CoreClrFunctionResolver->ResolveExecuteMainMethod:",
-                    "Used an incorrect offset to resolve function ExecuteMainMethod.",
-                    UnsupportedVMVersionMessage,
-                    FunctionUnderDebbugerMessage
-                ]);
-
-            return address;
-        }        
-
-        public nint ResolveRemoveThread()
-        {
-            const int offset = 0x622A8;
-
-            var address = CoreClrHandle + offset;
-
-            var checkNumber = BitConverter.ToUInt64(Interop.ReadProcessMemory(ProcessHandle, address, 8));
-            if (checkNumber != 0x8B4C20EC83485340UL)
-                throw new KornError([
-                    "UnsafeInjector.CoreClrFunctionResolver->ResolveRemoveThread:",
-                    "Used an incorrect offset to resolve function RemoveThread.",
-                    UnsupportedVMVersionMessage,
-                    FunctionUnderDebbugerMessage
-                ]);
-
-            return address;
-        }
-    }
+                                coreClrResolver.ResolveAppDomainAddress()) + 0x590) + 0x20) + 0x38) + 0x20);
+    }    
 
     bool disposed;
     public void Dispose()
