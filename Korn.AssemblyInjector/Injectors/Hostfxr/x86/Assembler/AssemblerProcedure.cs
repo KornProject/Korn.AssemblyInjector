@@ -1,4 +1,4 @@
-﻿using Korn.Utils.Logger;
+﻿using Korn;
 
 unsafe class AssemblerProcedure : Assembler
 {

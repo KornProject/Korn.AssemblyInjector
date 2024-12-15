@@ -1,5 +1,4 @@
-﻿using Korn.Utils.Logger;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text;
 
 namespace Korn.AssemblyInjector;

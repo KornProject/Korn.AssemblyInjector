@@ -1,5 +1,4 @@
-﻿using Korn.Utils.Logger;
-using Korn.Utils.PEImageReader;
+﻿using Korn.Utils.PEImageReader;
 using Korn.Utils.UnsafePDBResolver;
 using System.Net;
 
