@@ -1,15 +1,15 @@
 ﻿using Korn.AssemblyInjector;
 using System.Diagnostics;
 
-var process = Process.GetProcessesByName("ConsoleTest")[0];
+var process = Process.GetProcessesByName("ConsoleTest.netframework")[0];
 
 using var injector = new UnsafeInjector(process);
 
-injector.Inject(@"C:\Data\programming\vs projects\repos\ConsoleTest\TestLibrary\bin\Debug\net8.0\TestLibrary.dll");
+injector.Inject(@"C:\Data\programming\vs projects\korn\Korn.Bootstrapper\TestConsoleApp\bin\Debug\TestConsoleApp.exe");
 
 /*
 var injector = new HostfxrInjector(
-    process,
+    process,    
     @"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\SdkResolvers\Microsoft.DotNet.MSBuildSdkResolver\x64\hostfxr.dll"
 );
 */

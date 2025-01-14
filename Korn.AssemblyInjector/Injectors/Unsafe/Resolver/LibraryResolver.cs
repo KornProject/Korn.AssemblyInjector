@@ -1,24 +1,25 @@
 ﻿using Korn.Utils.PEImageReader;
 using Korn.Utils.UnsafePDBResolver;
 using System.Net;
+using System.Reflection.PortableExecutable;
 
 namespace Korn.AssemblyInjector;
-internal unsafe class CoreClrResolver : IDisposable
+internal unsafe class LibraryResolver : IDisposable
 {
-    public CoreClrResolver(nint processHandle) : this(processHandle, new(processHandle)) { }
+    public LibraryResolver(string moduleName, nint processHandle) : this(moduleName, processHandle, new(processHandle)) { }
 
-    public CoreClrResolver(nint processHandle, ProcessModulesResolver modulesResolver)
+    public LibraryResolver(string moduleName, nint processHandle, ProcessModulesResolver modulesResolver)
     {
         ProcessHandle = processHandle;
         ModulesResolver = modulesResolver;
-        var module = ModulesResolver.ResolveModule("coreclr");
+        var module = ModulesResolver.ResolveModule(moduleName);
         if (module is null)
             throw new KornError([
                 "UnsafeInjector.CoreClrResolver->.ctor(nint, ProcessModulesResolver):",
-                    $"CoreClr module not found in target process"
+                $"CoreClr module not found in target process"
             ]);
 
-        CoreClrHandle = module.ModuleHandle;
+        ModuleHandle = module.ModuleHandle;
         PEImage = new PEImage(module.Path);
 
         var debugSymbolsPath = ResolveDebugSymbols(module.Path);
@@ -29,7 +30,7 @@ internal unsafe class CoreClrResolver : IDisposable
     public readonly ProcessModulesResolver ModulesResolver;
     public readonly PdbResolver PdbResolver;
     public readonly PEImage PEImage;
-    public readonly nint CoreClrHandle;
+    public readonly nint ModuleHandle;
 
     string ResolveDebugSymbols(string modulePath)
     {
@@ -46,8 +47,8 @@ internal unsafe class CoreClrResolver : IDisposable
         var debugInfo = PEImage.ReadDegubInfo();
         if (debugInfo is null)
             throw new KornError([
-                "UnsafeInjector.CoreClrResolver->DownloadDebugSymbols:",
-                    $"Failed to get coreClr module's debug informationю"
+                $"UnsafeInjector.LibraryResolver({GetType().Name})->DownloadDebugSymbols:",
+                $"Failed to get module's debug informationю"
             ]);
 
         var downloadUrl = debugInfo.GetMicrosoftDebugSymbolsCacheUrl();
@@ -58,42 +59,34 @@ internal unsafe class CoreClrResolver : IDisposable
         }
         catch (Exception ex)
         {
-            throw new KornException("UnsafeInjector.CoreClrResolver->DownloadDebugSymbols: Exception thrown when downloading debug symbols from microsoft server", ex);
+            throw new KornException($"UnsafeInjector.LibraryResolver({GetType().Name})->DownloadDebugSymbols: Exception thrown when downloading debug symbols from microsoft server", ex);
         }
     }
 
-    nint ResolveField(string fieldName, string declaringType)
+    private protected nint Resolve(string name, string declaringType)
     {
-        var symbol = PdbResolver.ResolveField(fieldName, declaringType);
-
+        var symbol = PdbResolver.Resolve(name, declaringType);
         var sector = PEImage.GetSectionByNumber(symbol->Segment);
         var offset = sector->VirtualAddress + symbol->SegmentOffset;
-
-        return (nint)(CoreClrHandle + offset);
+        return (nint)(ModuleHandle + offset);
     }
 
-    nint ResolveMethod(string methodName)
+    private protected nint Resolve(string name)
     {
-        var symbol = PdbResolver.ResolveMethod(methodName);
-
-        return (nint)(CoreClrHandle + 0x1000/*header size*/ + symbol->HeaderOffset);
+        var symbol = PdbResolver.Resolve(name);
+        return (nint)(ModuleHandle + 0x1000/*header size*/ + symbol->HeaderOffset);
     }
-
-    public nint ResolveAppDomainAddress() => ResolveField("m_pTheAppDomain", "AppDomain");
-    public nint ResolveSetupThread() => ResolveMethod("SetupThread");
-    public nint ResolveInitializeAssemblyLoadContext() => ResolveMethod("AssemblyNative_InitializeAssemblyLoadContext");
-    public nint ResolveLoadFromPath() => ResolveMethod("AssemblyNative_LoadFromPath");
-    public nint ResolveExecuteMainMethod() => ResolveMethod("Assembly::ExecuteMainMethod");
-    public nint ResolveRemoveThread() => ResolveMethod("ThreadStore::RemoveThread");
 
     bool disposed;
     public void Dispose()
     {
         if (disposed)
             return;
+        disposed = true;
 
         PdbResolver.Dispose();
+        PEImage.Dispose();
     }
 
-    ~CoreClrResolver() => Dispose();
+    ~LibraryResolver() => Dispose();
 }

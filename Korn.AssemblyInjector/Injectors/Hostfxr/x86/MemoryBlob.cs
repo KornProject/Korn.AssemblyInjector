@@ -33,7 +33,7 @@
     }
 
     public void SilentWrite(nint position, byte[] bytes) 
-        => Interop.WriteProcessMemory(ProcessHandle, Cursor, bytes, (uint)bytes.Length, out int written);
+        => Interop.WriteProcessMemory(ProcessHandle, Cursor, bytes, bytes.Length, out int written);
 
     public void FillBy(byte value) => SilentWrite(0, Enumerable.Repeat(value, Size).ToArray());
 

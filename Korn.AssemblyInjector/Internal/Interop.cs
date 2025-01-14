@@ -19,7 +19,10 @@ static unsafe class Interop
         bool VirtualFreeEx(nint process, nint address, int size, uint dwFreeType);
 
     [DllImport(kernel)] public static extern 
-        bool WriteProcessMemory(nint process, nint address, byte[] buffer, uint size, out int written);
+        bool WriteProcessMemory(nint process, nint address, byte[] buffer, int size, out int written);
+
+    [DllImport(kernel)] public static extern
+        bool WriteProcessMemory(nint process, nint address, void* buffer, int size, out int written);
 
     [DllImport(kernel)] public static extern 
         bool ReadProcessMemory(nint process, nint address, byte[] buffer, uint size, out int written);
@@ -42,9 +45,14 @@ static unsafe class Interop
     [DllImport(psapi)] public static extern
         uint GetModuleFileNameEx(nint hProcess, nint module, StringBuilder baseName, int size);
 
-
     public static void WriteProcessMemory(nint process, nint address, byte[] buffer)
-        => WriteProcessMemory(process, address, buffer, (uint)buffer.Length, out int _);
+        => WriteProcessMemory(process, address, buffer, buffer.Length, out int _);
+
+    public static void WriteProcessMemory(nint process, nint address, byte* buffer, int size)
+        => WriteProcessMemory(process, address, buffer, size, out int _);
+
+    public static void WriteProcessMemory<T>(nint process, nint address, T value) where T : unmanaged
+        => WriteProcessMemory(process, address, &value, sizeof(T), out int _);
 
     public static byte[] ReadProcessMemory(nint process, nint address, int length)
     {
