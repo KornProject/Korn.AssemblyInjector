@@ -68,7 +68,7 @@ public unsafe class UnsafeInjector : IDisposable
 
         /*
          mov r14,---
-         mov r13,[rsp]
+         mov r13,rsp
          mov rbx,rcx
          mov rax,<coreclr.SetupThread>
          call rax
@@ -98,7 +98,7 @@ public unsafe class UnsafeInjector : IDisposable
          mov rcx,r12
          mov rax,<coreclr.RemoveThread>
          call rax
-         mov [rsp],r13
+         mov rsp,r13
          ret 
         */
         var code = allocatedMemory;
@@ -106,7 +106,6 @@ public unsafe class UnsafeInjector : IDisposable
         [
             0x49, 0xBE, ..BitConverter.GetBytes(exposedAppDomain),
             0x49, 0x89, 0xE5,
-            //0x4C, 0x8B, 0x2C, 0x24,
             0x48, 0x89, 0xCB,
             0x48, 0xB8, ..BitConverter.GetBytes(setupThreadFunction),
             0xFF, 0xD0,
@@ -137,7 +136,6 @@ public unsafe class UnsafeInjector : IDisposable
             0x48, 0xB8, ..BitConverter.GetBytes(removeThreadFunction),
             0xFF, 0xD0,
             0x4C, 0x89, 0xEC,
-            //0x4C, 0x89, 0x2C, 0x24,
             0xC3
         ];
 
@@ -228,7 +226,7 @@ public unsafe class UnsafeInjector : IDisposable
 
         /*
          mov r14,---
-         mov r13,[rsp]
+         mov r13,rsp
          mov rbx,rcx
          mov rax,<coreclr.SetupThread>
          call rax
@@ -251,14 +249,13 @@ public unsafe class UnsafeInjector : IDisposable
          mov rcx,r12
          mov rax,<coreclr.RemoveThread>
          call rax
-         mov [rsp],r13
+         mov rsp,r13
          ret 
         */
         byte[] shellcode =
         [
             0x49, 0xBE, ..BitConverter.GetBytes(assemblyBinder),
             0x49, 0x89, 0xE5,
-            //0x4C, 0x8B, 0x2C, 0x24,
             0x48, 0x89, 0xCB,
             0x48, 0xB8, ..BitConverter.GetBytes(setupThreadFunction),
             0xFF, 0xD0,
@@ -282,7 +279,6 @@ public unsafe class UnsafeInjector : IDisposable
             0x48, 0xB8, ..BitConverter.GetBytes(removeThreadFunction),
             0xFF, 0xD0,
             0x4C, 0x89, 0xEC,
-            //0x4C, 0x89, 0x2C, 0x24,
             0xC3
         ];
 
