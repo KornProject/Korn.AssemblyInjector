@@ -165,7 +165,6 @@ public unsafe class UnsafeInjector : IDisposable
             WriteCodeBase(codeBase);
             return address;
 
-            void WriteName(nint name) => Interop.WriteProcessMemory(processHandle, address + 0x8, (byte*)&name, sizeof(nint));
             void WriteCodeBase(nint name) => Interop.WriteProcessMemory(processHandle, address + 0x28, (byte*)&name, sizeof(nint));
         }
 
