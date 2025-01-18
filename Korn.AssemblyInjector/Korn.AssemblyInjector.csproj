@@ -10,9 +10,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Korn.Logger\Korn.Logger\Korn.Logger.csproj" />
+    <ProjectReference Include="..\..\Korn.Utils.PDBResolver\Korn.Utils.PDBResolver\Korn.Utils.PDBResolver.csproj" />
     <ProjectReference Include="..\..\Korn.Utils.PEImageReader\Korn.Utils.PEImageReader\Korn.Utils.PEImageReader.csproj" />
     <ProjectReference Include="..\..\Korn.Utils.System\Korn.Utils.System\Korn.Utils.System.csproj" />
-    <ProjectReference Include="..\..\Korn.Utils.UnsafePDBResolver\Korn.Utils.UnsafePDBResolver\Korn.Utils.UnsafePDBResolver.csproj" />
   </ItemGroup>
 
 </Project>
