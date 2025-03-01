@@ -32,6 +32,7 @@ public unsafe class UnsafeInjector : IDisposable
 
     public readonly Process Process;
     public bool IsCoreClr => isCoreClr;
+    public bool IsClr => !isCoreClr;
 
     public void Inject(string path)
     {

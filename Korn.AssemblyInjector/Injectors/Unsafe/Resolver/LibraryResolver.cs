@@ -1,5 +1,6 @@
-﻿using Korn.Utils.PEImageReader;
-using Korn.Utils.UnsafePDBResolver;
+﻿using Korn.Shared;
+using Korn.Utils;
+using Korn.Utils.PEImageReader;
 using System.Net;
 using System.Reflection.PortableExecutable;
 
@@ -54,7 +55,7 @@ internal unsafe class LibraryResolver : IDisposable
         var downloadUrl = debugInfo.GetMicrosoftDebugSymbolsCacheUrl();
         try
         {
-            KornLogger.WriteMessage($"Start downloading debug symbols from microsoft server for a file \"{modulePath}\" from ulr \"{downloadUrl}\"");
+            KornShared.Logger.WriteMessage($"Start downloading debug symbols from microsoft server for a file \"{modulePath}\" from ulr \"{downloadUrl}\"");
             new WebClient().DownloadFile(downloadUrl, debugSymbolsPath);
         }
         catch (Exception ex)
