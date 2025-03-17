@@ -16,33 +16,39 @@ public unsafe class UnsafeInjector : IDisposable
 
         isCoreClr = modulesResolver.ResolveModule("coreclr") is not null;
         if (!isCoreClr)
-        {
-            var isClr = modulesResolver.ResolveModule("clr") is not null;
-            if (!isClr)
-                throw new KornError([
-                    "UnsafeInjector->.ctor:",
-                    "Not found any CLR in the target process"
-                ]);
-        }
+            isClr = modulesResolver.ResolveModule("clr") is not null;           
     }
 
     readonly ProcessModulesResolver modulesResolver;
     readonly nint processHandle;
     readonly bool isCoreClr;
+    readonly bool isClr;
 
     public readonly Process Process;
     public bool IsCoreClr => isCoreClr;
-    public bool IsClr => !isCoreClr;
+    public bool IsClr => isClr;
 
     public void Inject(string path)
     {
-        if (isCoreClr)
+        if (IsCoreClr)
             InjectInCoreClr(path);
-        else InjectInClr(path);
+        else if (IsClr)
+            InjectInClr(path);
+        else 
+            throw new KornError([
+                "UnsafeInjector->.Inject: ",
+                "Not found any VM in the target process."
+            ]);
     }
 
     public void InjectInClr(string path)
     {
+        if (!IsClr)
+            throw new KornError([
+                "UnsafeInjector->.InjectInClr: ",
+                "Not found CLR in the target process."
+            ]);
+
         using var clrResolver = new ClrResolver(processHandle, modulesResolver);
         var setupThreadFunction = clrResolver.ResolveSetupThread();
         var loadAssemblyFunction = clrResolver.ResolveLoadAssembly();
@@ -140,7 +146,7 @@ public unsafe class UnsafeInjector : IDisposable
             0xC3
         ];
 
-        Interop.WriteProcessMemory(processHandle, allocatedMemory, shellcode);  
+        Interop.WriteProcessMemory(processHandle, allocatedMemory, shellcode);
 
         var threadID = Interop.CreateRemoteThread(processHandle, 0, 0, code, data, 0, (nint*)0);
 
@@ -195,6 +201,12 @@ public unsafe class UnsafeInjector : IDisposable
 
     public void InjectInCoreClr(string path)
     {
+        if (!IsCoreClr)
+            throw new KornError([
+                "UnsafeInjector->.InjectInCoreClr: ",
+                "Not found CoreCLR in the target process."
+            ]);
+
         const uint MEM_RELEASE = 0x00008000;
         const uint INFINITE = 0xFFFFFFFF;
 
