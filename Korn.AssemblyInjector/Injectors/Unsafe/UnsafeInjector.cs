@@ -16,7 +16,7 @@ public unsafe class UnsafeInjector : IDisposable
 
         isCoreClr = modulesResolver.ResolveModule("coreclr") is not null;
         if (!isCoreClr)
-            isClr = modulesResolver.ResolveModule("clr") is not null;           
+            isClr = modulesResolver.ResolveModule("clr") is not null;
     }
 
     readonly ProcessModulesResolver modulesResolver;
@@ -34,7 +34,7 @@ public unsafe class UnsafeInjector : IDisposable
             InjectInCoreClr(path);
         else if (IsClr)
             InjectInClr(path);
-        else 
+        else
             throw new KornError([
                 "UnsafeInjector->.Inject: ",
                 "Not found any VM in the target process."
@@ -128,7 +128,7 @@ public unsafe class UnsafeInjector : IDisposable
             0x48, 0x89, 0x44, 0x24, 0x20,
             0x48, 0xC7, 0x44, 0x24, 0x28, 0x00, 0x00, 0x00, 0x00,
             0x48, 0xC7, 0x44, 0x24, 0x30, 0x01, 0x00, 0x00, 0x00,
-            0x48, 0xC7, 0x44, 0x24, 0x38, 0x00, 0x00, 0x00, 0x00,   
+            0x48, 0xC7, 0x44, 0x24, 0x38, 0x00, 0x00, 0x00, 0x00,
             0x48, 0xC7, 0x44, 0x24, 0x40, 0x01, 0x00, 0x00, 0x00,
 
             0x48, 0xB8, ..BitConverter.GetBytes(loadAssemblyFunction),
@@ -157,7 +157,7 @@ public unsafe class UnsafeInjector : IDisposable
             *memory += size;
             Interop.WriteProcessMemory(processHandle, address, *(byte**)&text, size);
 
-            return address; 
+            return address;
         }
 
         nint AllocateAssemblyName(nint* memory, nint codeBase)
@@ -295,7 +295,7 @@ public unsafe class UnsafeInjector : IDisposable
             0xC3
         ];
 
-        Interop.WriteProcessMemory(processHandle, allocatedMemory, shellcode);  
+        Interop.WriteProcessMemory(processHandle, allocatedMemory, shellcode);
 
         var threadID = Interop.CreateRemoteThread(processHandle, 0, 0, code, data, 0, (nint*)0);
         /* Removed for reasons of the second argument not working. See [Dec 12 #1] in Notes.txt */
@@ -305,13 +305,13 @@ public unsafe class UnsafeInjector : IDisposable
         // Offsets of structures may be change with different .net x.0.0 versions. Required tests
         // &TheAppDomain->RootAssembly->PEAssembly->HostAssembly->AssemblyBinder
         nint GetAssemblyBinder() =>
-            Interop.ReadProcessMemory<nint>(processHandle, 
+            Interop.ReadProcessMemory<nint>(processHandle,
                 Interop.ReadProcessMemory<nint>(processHandle,
                     Interop.ReadProcessMemory<nint>(processHandle,
-                        Interop.ReadProcessMemory<nint>(processHandle, 
-                            Interop.ReadProcessMemory<nint>(processHandle, 
+                        Interop.ReadProcessMemory<nint>(processHandle,
+                            Interop.ReadProcessMemory<nint>(processHandle,
                                 coreClrResolver.ResolveAppDomainAddress()) + 0x590) + 0x20) + 0x38) + 0x20);
-    }    
+    }
 
     nint AllocateMemory(int size = 0x1000)
     {

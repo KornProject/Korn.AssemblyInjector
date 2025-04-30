@@ -1,8 +1,8 @@
 ﻿using Korn;
 
-unsafe class AssemblerProcedure : Assembler
+unsafe class AssemblerProcedure : AssemblerX64
 {
-    public AssemblerProcedure(Assembler assembler, int stackSize = 0, ProcedureFlags flags = ProcedureFlags.None) : base(assembler.MemoryBlob)
+    public AssemblerProcedure(AssemblerX64 assembler, int stackSize = 0, ProcedureFlags flags = ProcedureFlags.None) : base(assembler.MemoryBlob)
     {
         Assembler = assembler;
         Address = assembler.MemoryBlob.PageBase + assembler.MemoryBlob.Position;
@@ -26,7 +26,7 @@ unsafe class AssemblerProcedure : Assembler
     }
 
     public readonly nint Address;
-    public readonly Assembler Assembler;
+    public readonly AssemblerX64 Assembler;
     public readonly ProcedureFlags Flags;
 
     public readonly ProcedureStack Stack;

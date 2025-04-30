@@ -24,16 +24,16 @@ public unsafe class HostfxrInjector : IDisposable
         const uint INFINITE = 0xFFFFFFFF;
 
         if (!File.Exists(assemblyPath))
-            throw new KornError(
-                ["HostfxrInjector->Inject:", 
-                $"Failed to find assembly file {Path.GetFileName(assemblyPath)}."]
-            );  
+            throw new KornError([
+                "HostfxrInjector->Inject: ", 
+               $"Failed to find assembly file {Path.GetFileName(assemblyPath)}."
+            ]);  
 
         if (!File.Exists(configPath))
-            throw new KornError(
-                ["HostfxrInjector->Inject:",
-                $"Failed to find config file {Path.GetFileName(configPath)}."]
-            );
+            throw new KornError([
+                "HostfxrInjector->Inject: ",
+               $"Failed to find config file {Path.GetFileName(configPath)}."
+            ]);
 
         var memoryBlob = MemoryBlob.Allocate(processHandle);
         var procedureBlob = memoryBlob.ExtractBlob(0, 2048);
@@ -44,13 +44,20 @@ public unsafe class HostfxrInjector : IDisposable
         if (hostfxr is null)
         {
             if (HostfxrPath is null)
-                throw new KornError(
-                    ["HostfxrInjector->Inject:",
-                    "Hostfxr module not found, load this module into the target application or specify the path to it in the constructor of the HostfxrInjerctor class"]);
+                throw new KornError([
+                    "HostfxrInjector->Inject: ",
+                    "Hostfxr module not found, load this module into the target application or specify the path to it in the constructor of the HostfxrInjerctor class"
+                ]);
 
             LoadLibrary(processHandle, HostfxrPath);
             moduleResolver.ResolveAllModules();
             hostfxr = moduleResolver.ResolveModule("hostfxr");
+
+            if (hostfxr is null)
+                throw new KornError([
+                    "HostfxrInjector->Inject: ",
+                    "Failed to load Hostfxr module"
+                ]);
         }
 
         var hostfxr_initialize_for_runtime_config = hostfxr.ResolveExport("hostfxr_initialize_for_runtime_config");
@@ -63,7 +70,7 @@ public unsafe class HostfxrInjector : IDisposable
         var methodData = dataBlob.AllocateWString(methodName);
 
         procedureBlob.FillBy(0x90);
-        var assembler = new Assembler(procedureBlob);
+        var assembler = new AssemblerX64(procedureBlob);
         var procedure = new AssemblerProcedure(assembler,
             stackSize: 0x100,
             flags: ProcedureFlags.AllowStackValue64 | 
@@ -152,6 +159,7 @@ public unsafe class HostfxrInjector : IDisposable
     {
         if (disposed)
             return;
+        disposed = true;
 
         if (processHandle != 0)
             Interop.CloseHandle(processHandle);    

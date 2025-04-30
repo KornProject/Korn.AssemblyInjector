@@ -9,8 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Korn.Logger\Korn.Logger\Korn.Logger.csproj" />
-    <ProjectReference Include="..\..\Korn.Shared.Internal\Korn.Shared.Internal\Korn.Shared.Internal.csproj" />
+    <ProjectReference Include="..\..\Korn.Core\Korn.Core\Korn.Core.csproj" />
+    <ProjectReference Include="..\..\Korn.Utils.Assembler\Korn.Utils.Assembler\Korn.Utils.Assembler.csproj" />
     <ProjectReference Include="..\..\Korn.Utils.PDBResolver\Korn.Utils.PDBResolver\Korn.Utils.PDBResolver.csproj" />
     <ProjectReference Include="..\..\Korn.Utils.PEImageReader\Korn.Utils.PEImageReader\Korn.Utils.PEImageReader.csproj" />
     <ProjectReference Include="..\..\Korn.Utils.System\Korn.Utils.System\Korn.Utils.System.csproj" />

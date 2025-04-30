@@ -1,6 +1,6 @@
-﻿unsafe class Assembler
+﻿unsafe class AssemblerX64
 {
-    public Assembler(MemoryBlob memoryBlob)
+    public AssemblerX64(MemoryBlob memoryBlob)
     {
         MemoryBlob = memoryBlob;
     }
