@@ -31,7 +31,7 @@ static unsafe class Interop
         nint GetProcAddress(nint module, [MarshalAs(UnmanagedType.LPStr)] string name);
 
     [DllImport(kernel)] public static extern
-        nint GetModuleHandle([MarshalAs(UnmanagedType.LPWStr)] string name);
+        nint GetModuleHandle(string name);
 
     [DllImport(kernel)] public static extern 
         nint CreateRemoteThread(nint process, nint threadAttribute, nint stackSize, nint startAddress, nint parameter, uint creationFlags, nint* threadId);

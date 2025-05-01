@@ -2,7 +2,6 @@
 using Korn.Utils;
 using Korn.Utils.PEImageReader;
 using System.Net;
-using System.Reflection.PortableExecutable;
 
 namespace Korn.AssemblyInjector;
 internal unsafe class LibraryResolver : IDisposable
@@ -13,14 +12,23 @@ internal unsafe class LibraryResolver : IDisposable
     {
         ProcessHandle = processHandle;
         ModulesResolver = modulesResolver;
+
         var module = ModulesResolver.ResolveModule(moduleName);
         if (module is null)
             throw new KornError([
-                "UnsafeInjector.CoreClrResolver->.ctor(nint, ProcessModulesResolver):",
-                $"CoreClr module not found in target process"
+                "UnsafeInjector.LibraryResolver->.ctor(nint, ProcessModulesResolver):",
+                $"The module not found in target process"
             ]);
-
         ModuleHandle = module.ModuleHandle;
+
+        var kernelModule = ModulesResolver.ResolveModule("kernel32");
+        if (kernelModule is null)
+            throw new KornError([
+                "UnsafeInjector.LibraryResolver->.ctor(nint, ProcessModulesResolver):",
+               $"Kernel32 module not found in target process"
+            ]);
+        Kernel32Handle = kernelModule.ModuleHandle;
+
         PEImage = new PEImage(module.Path);
 
         var debugSymbolsPath = ResolveDebugSymbols(module.Path);
@@ -32,6 +40,7 @@ internal unsafe class LibraryResolver : IDisposable
     public readonly PdbResolver PdbResolver;
     public readonly PEImage PEImage;
     public readonly nint ModuleHandle;
+    public readonly nint Kernel32Handle;
 
     string ResolveDebugSymbols(string modulePath)
     {
@@ -42,6 +51,7 @@ internal unsafe class LibraryResolver : IDisposable
         return debugSymbolsPath;
     }
 
+#pragma warning disable SYSLIB0014 // Type or member is obsolete
     void DownloadDebugSymbols(string modulePath, string debugSymbolsPath)
     {
         var pdbPath = PdbResolver.GetDebugSymbolsPathForExecutable(modulePath);
@@ -63,6 +73,7 @@ internal unsafe class LibraryResolver : IDisposable
             throw new KornException($"UnsafeInjector.LibraryResolver({GetType().Name})->DownloadDebugSymbols: Exception thrown when downloading debug symbols from microsoft server", ex);
         }
     }
+#pragma warning restore SYSLIB0014 // Type or member is obsolete
 
     private protected nint Resolve(string name, string declaringType)
     {
@@ -76,6 +87,14 @@ internal unsafe class LibraryResolver : IDisposable
     {
         var symbol = PdbResolver.Resolve(name);
         return (nint)(ModuleHandle + 0x1000/*header size*/ + symbol->HeaderOffset);
+    }
+
+    public nint ResolveSleep()
+    {
+        var kernel32 = Interop.GetModuleHandle("kernel32");
+        var sleep = Interop.GetProcAddress(kernel32, "Sleep");
+        var offset = sleep - kernel32;
+        return Kernel32Handle + offset;
     }
 
     bool disposed;

@@ -1,13 +1,15 @@
-﻿using System.Diagnostics;
+﻿using Korn.Utils.Assembler;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text;
 
+#pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
 namespace Korn.AssemblyInjector;
 public unsafe class UnsafeInjector : IDisposable
 {
     public UnsafeInjector(Process process)
     {
-        const int PROCESS_ALL_ACCESS = 0x000F0000 | 0x00100000 | 0xFFFF;
+        const int PROCESS_ALL_ACCESS = 0xF0000 | 0x100000 | 0xFFFF;
 
         Process = process;
 
@@ -54,6 +56,7 @@ public unsafe class UnsafeInjector : IDisposable
         var loadAssemblyFunction = clrResolver.ResolveLoadAssembly();
         var executeAssemblyFunction = clrResolver.ResolveExecuteAssembly();
         var removeThreadFunction = clrResolver.ResolveRemoveThread();
+        var sleepFunction = clrResolver.ResolveSleep();
 
         var systemDomainPointer = clrResolver.ResolveSystemDomainAddress();
         var systemDomain = Interop.ReadProcessMemory<nint>(processHandle, systemDomainPointer);
@@ -73,80 +76,54 @@ public unsafe class UnsafeInjector : IDisposable
 
         var args = AllocateArgs(&allocatedMemory);
 
-        /*
-         mov r14,---
-         mov r13,rsp
-         mov rbx,rcx
-         mov rax,<coreclr.SetupThread>
-         call rax
-         mov r12,rax
-         
-         mov rcx,---
-         mov rdx,---
-         xor r9,r9
-         xor r10,r10
-
-         sub rsp,0x48
-         mov rax,---
-         mov [rsp+0x20],rax
-         mov [rsp+0x28],0
-         mov [rsp+0x30],1
-         mov [rsp+0x38],0
-         mov [rsp+0x40],1       
-
-         mov rax,---
-         call rax
-         mov rcx,r14
-         mov rdx,rax
-         mov r9,--- 
-         mov rax,---
-         call rax
-
-         mov rcx,r12
-         mov rax,<coreclr.RemoveThread>
-         call rax
-         mov rsp,r13
-         ret 
-        */
         var code = allocatedMemory;
-        byte[] shellcode =
-        [
-            0x49, 0xBE, ..BitConverter.GetBytes(exposedAppDomain),
-            0x49, 0x89, 0xE5,
-            0x48, 0x89, 0xCB,
-            0x48, 0xB8, ..BitConverter.GetBytes(setupThreadFunction),
-            0xFF, 0xD0,
-            0x49, 0x89, 0xC4,
+        var shellcode = stackalloc byte[1024];
+        var shellcodePointer = shellcode;
+                
+        var endShellcode = 
+        ((Assembler*)&shellcodePointer)
 
-            0x48, 0xB9, ..BitConverter.GetBytes(assemblyName),
-            0x48, 0xBA, ..BitConverter.GetBytes(codeBase),
-            0x4D, 0x31, 0xC9,
-            0x4D, 0x31, 0xC0,
+        ->MovR1464(exposedAppDomain)
+        ->MovR13Rsp()
+        ->MovRbxRcx()
+        ->MovRax64(setupThreadFunction)
+        ->CallRax()
+        ->MovR12Rax()
+        
+        ->MovRcx64(assemblyName)
+        ->MovRdx64(codeBase)
+        ->XorR9R9()
+        ->XorR8R8()
 
-            0x48, 0x83, 0xEC, 0x48,
-            0x48, 0xB8, ..BitConverter.GetBytes(stackMark),
-            0x48, 0x89, 0x44, 0x24, 0x20,
-            0x48, 0xC7, 0x44, 0x24, 0x28, 0x00, 0x00, 0x00, 0x00,
-            0x48, 0xC7, 0x44, 0x24, 0x30, 0x01, 0x00, 0x00, 0x00,
-            0x48, 0xC7, 0x44, 0x24, 0x38, 0x00, 0x00, 0x00, 0x00,
-            0x48, 0xC7, 0x44, 0x24, 0x40, 0x01, 0x00, 0x00, 0x00,
+        ->SubRsp8(0x48)
+        ->MovRax64(stackMark)
+        ->MovRspPtrOff8Rax(0x20)
+        ->MovRspPtrOff832(0x28, 0)
+        ->MovRspPtrOff832(0x30, 1)
+        ->MovRspPtrOff832(0x38, 0)
+        ->MovRspPtrOff832(0x40, 1)
+        ->MovRax64(loadAssemblyFunction)
+        ->CallRax()
 
-            0x48, 0xB8, ..BitConverter.GetBytes(loadAssemblyFunction),
-            0xFF, 0xD0,
-            0x4C, 0x89, 0xF1,
-            0x48, 0x89, 0xC2,
-            0x49, 0xB9, ..BitConverter.GetBytes(args),
-            0x48, 0xB8, ..BitConverter.GetBytes(executeAssemblyFunction),
-            0xFF, 0xD0,
+        ->MovRcxR14()
+        ->MovRdxRax()
+        ->MovR964(args)
+        ->MovRax64(executeAssemblyFunction)
+        ->CallRax()
 
-            0x4C, 0x89, 0xE1,
-            0x48, 0xB8, ..BitConverter.GetBytes(removeThreadFunction),
-            0xFF, 0xD0,
-            0x4C, 0x89, 0xEC,
-            0xC3
-        ];
+        ->MovRcxR12()
+        ->MovRax64(removeThreadFunction)
+        ->CallRax()
 
-        Interop.WriteProcessMemory(processHandle, allocatedMemory, shellcode);
+        ->MovRspR13()
+
+        ->MovRcx64(0xFFFFFFFF)
+        ->MovRax64(sleepFunction)
+        ->CallRax()
+
+        ->Ret();
+
+        Interop.WriteProcessMemory(processHandle, allocatedMemory, shellcode, (int)(*(byte**)endShellcode - shellcode));
 
         var threadID = Interop.CreateRemoteThread(processHandle, 0, 0, code, data, 0, (nint*)0);
 
@@ -207,8 +184,8 @@ public unsafe class UnsafeInjector : IDisposable
                 "Not found CoreCLR in the target process."
             ]);
 
-        const uint MEM_RELEASE = 0x00008000;
-        const uint INFINITE = 0xFFFFFFFF;
+        // const uint MEM_RELEASE = 0x00008000;
+        // const uint INFINITE = 0xFFFFFFFF;
 
         using var coreClrResolver = new CoreClrResolver(processHandle, modulesResolver);
         var setupThreadFunction = coreClrResolver.ResolveSetupThread();
@@ -216,6 +193,7 @@ public unsafe class UnsafeInjector : IDisposable
         var loadAssemblyFunction = coreClrResolver.ResolveLoadFromPath();
         var executeMainFunction = coreClrResolver.ResolveExecuteMainMethod();
         var removeThreadFunction = coreClrResolver.ResolveRemoveThread();
+        var sleepFunction = coreClrResolver.ResolveSleep();
 
         var assemblyBinder = GetAssemblyBinder();
 
@@ -234,68 +212,51 @@ public unsafe class UnsafeInjector : IDisposable
         var localArgumentsArrayPointer = allocatedMemory;
         Interop.WriteProcessMemory(processHandle, localArgumentsArrayPointer, BitConverter.GetBytes(localArgumentsArray));
         allocatedMemory += 0x08;
-
+               
         var code = allocatedMemory;
+        var shellcode = stackalloc byte[1024];
+        var shellcodePointer = shellcode;
 
-        /*
-         mov r14,---
-         mov r13,rsp
-         mov rbx,rcx
-         mov rax,<coreclr.SetupThread>
-         call rax
-         mov r12,rax
-         mov rcx,r14
-         mov rdx,rbx
-         mov r8,0
-         mov r9,---
-         mov rax,<coreclr.LoadFromPath>
-         sub rsp,8
-         call rax
-         mov rax,---
-         mov rax,qword ptr ds:[rax]
-         mov rax,qword ptr ds:[rax+20]
-         mov rcx,qword ptr ds:[rax]
-         mov rdx,---
-         mov r8,0
-         mov rax,<coreclr.ExecuteMainMethod>
-         call rax
-         mov rcx,r12
-         mov rax,<coreclr.RemoveThread>
-         call rax
-         mov rsp,r13
-         ret 
-        */
-        byte[] shellcode =
-        [
-            0x49, 0xBE, ..BitConverter.GetBytes(assemblyBinder),
-            0x49, 0x89, 0xE5,
-            0x48, 0x89, 0xCB,
-            0x48, 0xB8, ..BitConverter.GetBytes(setupThreadFunction),
-            0xFF, 0xD0,
-            0x49, 0x89, 0xC4,
-            0x4C, 0x89, 0xF1,
-            0x48, 0x89, 0xDA,
-            0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
-            0x49, 0xB9, ..BitConverter.GetBytes(localLoadedAssembly),
-            0x48, 0xB8, ..BitConverter.GetBytes(loadAssemblyFunction),
-            0x48, 0x83, 0xEC, 0x08,
-            0xFF, 0xD0,
-            0x48, 0xB8, ..BitConverter.GetBytes(localLoadedAssembly),
-            0x48, 0x8B, 0x00,
-            0x48, 0x8B, 0x40, 0x20,
-            0x48, 0x8B, 0x08,
-            0x48, 0xBA, ..BitConverter.GetBytes(localArgumentsArrayPointer),
-            0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
-            0x48, 0xB8, ..BitConverter.GetBytes(executeMainFunction),
-            0xFF, 0xD0,
-            0x4C, 0x89, 0xE1,
-            0x48, 0xB8, ..BitConverter.GetBytes(removeThreadFunction),
-            0xFF, 0xD0,
-            0x4C, 0x89, 0xEC,
-            0xC3
-        ];
+        var endShellcode =
+        ((Assembler*)&shellcodePointer)
 
-        Interop.WriteProcessMemory(processHandle, allocatedMemory, shellcode);
+        ->MovR1464(assemblyBinder)
+        ->MovR13Rsp()
+        ->MovRbxRcx()
+        ->MovRax64(setupThreadFunction)
+        ->CallRax()
+        ->MovR12Rax()
+
+        ->MovRcxR14()
+        ->MovRdxRbx()
+        ->XorR8R8()
+        ->MovR964(localLoadedAssembly)
+        ->MovRax64(loadAssemblyFunction)
+        ->SubRsp8(8)
+        ->CallRax()
+
+        ->MovRax64(localLoadedAssembly)
+        ->MovRaxRaxPtr()
+        ->MovRaxRaxPtrOff8(0x20)
+        ->MovRcxRaxPtr()
+        ->MovRdx64(localArgumentsArrayPointer)
+        ->XorR8R8()
+        ->MovRax64(executeMainFunction)
+        ->CallRax()
+
+        ->MovRcxR12()
+        ->MovRax64(removeThreadFunction)
+        ->CallRax()
+
+        ->MovRspR13()
+
+        ->MovRcx64(0xFFFFFFFF)
+        ->MovRax64(sleepFunction)
+        ->CallRax()
+
+        ->Ret();
+
+        Interop.WriteProcessMemory(processHandle, allocatedMemory, shellcode, (int)(*(byte**)endShellcode - shellcode));
 
         var threadID = Interop.CreateRemoteThread(processHandle, 0, 0, code, data, 0, (nint*)0);
         /* Removed for reasons of the second argument not working. See [Dec 12 #1] in Notes.txt */
@@ -334,3 +295,4 @@ public unsafe class UnsafeInjector : IDisposable
 
     ~UnsafeInjector() => Dispose();
 }
+#pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
