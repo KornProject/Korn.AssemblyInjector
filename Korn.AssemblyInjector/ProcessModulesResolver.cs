@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using Korn.Utils.Unsafe;
+using System.Text;
 
 unsafe record ProcessModulesResolver(nint ProcessHandle)
 {
@@ -22,10 +23,8 @@ unsafe record ProcessModulesResolver(nint ProcessHandle)
 
             Interop.GetModuleFileNameEx(ProcessHandle, moduleHandle, stringBuilder, stringBuilder.Capacity);
 
-            var path = stringBuilder.ToString();
-            var name = Path.GetFileNameWithoutExtension(path);
-            var nameWithExtension = Path.GetFileName(path);
-            var module = new ProcessModule(ProcessHandle, moduleHandle, path, name, nameWithExtension);
+            var name = Path.GetFileName(stringBuilder.ToString());
+            var module = new ProcessModule(ProcessHandle, moduleHandle, name);
             result.Add(module);
         }
 
@@ -41,10 +40,6 @@ unsafe record ProcessModulesResolver(nint ProcessHandle)
         var modules = cachedResolvedModules;
 
         foreach (var module in modules!)
-            if (string.Equals(name, module.NameWithExtension, StringComparison.OrdinalIgnoreCase))
-                return module;
-
-        foreach (var module in modules!)
             if (string.Equals(name, module.Name, StringComparison.OrdinalIgnoreCase))
                 return module;
 
@@ -52,30 +47,26 @@ unsafe record ProcessModulesResolver(nint ProcessHandle)
     }
 }
 
-unsafe record ProcessModule(nint ProcessHandle, nint ModuleHandle, string Path, string Name, string NameWithExtension) 
+unsafe record ProcessModule(nint ProcessHandle, nint ModuleHandle, string Name) 
 {
     ModuleExportsResolver? exportsResolver;
-    public nint ResolveExport(string name)
-    {
-        if (exportsResolver is null)
-            exportsResolver = new(this);
+    ModuleExportsResolver ExportsResolver => exportsResolver is null ? exportsResolver = new(this) : exportsResolver;
 
-        return exportsResolver.ResolveExport(name);
-    }
+    public nint ResolveExport(string name) => ExportsResolver.ResolveExport(name);
 
     class ModuleExportsResolver
     {
         public ModuleExportsResolver(ProcessModule module)
         {
             Module = module;
-            PE = new(module.ProcessHandle, module.ModuleHandle);
+            pe = new(module.ProcessHandle, module.ModuleHandle);
         }
 
         public readonly ProcessModule Module;
-        readonly RuntimePE PE;
+        RuntimePE pe;
 
         public nint ResolveExport(string name) => ResolveExport(new ReadOnlySpan<byte>(Encoding.UTF8.GetBytes(name)));
-
-        public nint ResolveExport(ReadOnlySpan<byte> name) => PE.GetExportFunctionAddress(name);
+        public nint ResolveExport(NativeString* name) => ResolveExport(name->GetUtf8Span());
+        public nint ResolveExport(ReadOnlySpan<byte> name) => pe.GetExportFunctionAddress(name);
     }
 }

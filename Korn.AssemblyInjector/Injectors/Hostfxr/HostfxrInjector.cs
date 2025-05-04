@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using Korn.Utils;
+using System.Diagnostics;
 using System.Text;
 
 namespace Korn.AssemblyInjector;
@@ -11,7 +12,7 @@ public unsafe class HostfxrInjector : IDisposable
         Process = process;
         HostfxrPath = hostfxrPath;
 
-        processHandle = Interop.OpenProcess(PROCESS_ALL_ACCESS, false, Process.Id);
+        processHandle = Kernel32.OpenProcess(PROCESS_ALL_ACCESS, false, Process.Id);
     }
 
     public readonly string? HostfxrPath;
@@ -130,11 +131,11 @@ public unsafe class HostfxrInjector : IDisposable
 
         procedure.WriteEpilogue();
 
-        var threadID = Interop.CreateRemoteThread(processHandle, 0, 0, procedure.Address, 0, 0, (nint*)0);
-        Interop.WaitForSingleObject(threadID, INFINITE);
+        var threadID = Kernel32.CreateRemoteThread(processHandle, 0, 0, procedure.Address, 0, 0, (nint*)0);
+        Kernel32.WaitForSingleObject(threadID, INFINITE);
         memoryBlob.Free();
 
-        Interop.CloseHandle(processHandle);
+        Kernel32.CloseHandle(processHandle);
     }
 
     static void LoadLibrary(nint processHandle, string path)
@@ -144,14 +145,14 @@ public unsafe class HostfxrInjector : IDisposable
         const uint PAGE_READWRITE = 0x04;
         const uint INFINITE = 0xFFFFFFFF;
 
-        var kernelModule = Interop.GetModuleHandle("kernel32");
-        var loadLibraryAddress = Interop.GetProcAddress(kernelModule, "LoadLibraryA");
+        var kernelModule = Kernel32.GetModuleHandle("kernel32");
+        var loadLibraryAddress = Kernel32.GetProcAddress(kernelModule, "LoadLibraryA");
 
-        var allocatedMemory = Interop.VirtualAllocEx(processHandle, 0, 0x1000, MEM_COMMIT, PAGE_READWRITE);
-        Interop.WriteProcessMemory(processHandle, allocatedMemory, Encoding.UTF8.GetBytes(path));
-        var threadID = Interop.CreateRemoteThread(processHandle, 0, 0, loadLibraryAddress, allocatedMemory, 0, (nint*)0);
-        Interop.WaitForSingleObject(threadID, INFINITE);
-        Interop.VirtualFreeEx(processHandle, allocatedMemory, 0x1000, MEM_RELEASE);
+        var allocatedMemory = Kernel32.VirtualAllocEx(processHandle, 0, 0x1000, MEM_COMMIT, PAGE_READWRITE);
+        Kernel32.WriteProcessMemory(processHandle, allocatedMemory, Encoding.UTF8.GetBytes(path));
+        var threadID = Kernel32.CreateRemoteThread(processHandle, 0, 0, loadLibraryAddress, allocatedMemory, 0, (nint*)0);
+        Kernel32.WaitForSingleObject(threadID, INFINITE);
+        Kernel32.VirtualFreeEx(processHandle, allocatedMemory, 0x1000, MEM_RELEASE);
     }
 
     bool disposed;
@@ -162,7 +163,7 @@ public unsafe class HostfxrInjector : IDisposable
         disposed = true;
 
         if (processHandle != 0)
-            Interop.CloseHandle(processHandle);    
+            Kernel32.CloseHandle(processHandle);    
     }
 
     ~HostfxrInjector() => Dispose();

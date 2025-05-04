@@ -1,4 +1,5 @@
-﻿using Korn.Utils.Assembler;
+﻿using Korn.Utils;
+using Korn.Utils.Assembler;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text;
@@ -7,13 +8,10 @@ using System.Text;
 namespace Korn.AssemblyInjector;
 public unsafe class UnsafeInjector : IDisposable
 {
-    public UnsafeInjector(Process process)
+    public UnsafeInjector(int pid)
     {
-        const int PROCESS_ALL_ACCESS = 0xF0000 | 0x100000 | 0xFFFF;
-
-        Process = process;
-
-        processHandle = Interop.OpenProcess(PROCESS_ALL_ACCESS, false, Process.Id);
+        process = new ExternalProcess(pid);
+        memory = process.Memory;
         modulesResolver = new ProcessModulesResolver(processHandle);
 
         isCoreClr = modulesResolver.ResolveModule("coreclr") is not null;
@@ -21,12 +19,12 @@ public unsafe class UnsafeInjector : IDisposable
             isClr = modulesResolver.ResolveModule("clr") is not null;
     }
 
-    readonly ProcessModulesResolver modulesResolver;
-    readonly nint processHandle;
-    readonly bool isCoreClr;
-    readonly bool isClr;
+    ProcessModulesResolver modulesResolver;
+    ExternalProcess process;
+    ExternalMemory memory;
+    bool isCoreClr;
+    bool isClr;
 
-    public readonly Process Process;
     public bool IsCoreClr => isCoreClr;
     public bool IsClr => isClr;
 
@@ -59,8 +57,8 @@ public unsafe class UnsafeInjector : IDisposable
         var sleepFunction = clrResolver.ResolveSleep();
 
         var systemDomainPointer = clrResolver.ResolveSystemDomainAddress();
-        var systemDomain = Interop.ReadProcessMemory<nint>(processHandle, systemDomainPointer);
-        var appDomain = Interop.ReadProcessMemory<nint>(processHandle, systemDomain + 0x560);
+        var systemDomain = Kernel32.ReadProcessMemory<nint>(processHandle, systemDomainPointer);
+        var appDomain = Kernel32.ReadProcessMemory<nint>(processHandle, systemDomain + 0x560);
 
         var allocatedMemory = AllocateMemory();
         var data = allocatedMemory;
@@ -69,7 +67,7 @@ public unsafe class UnsafeInjector : IDisposable
         var assemblyName = AllocateAssemblyName(&allocatedMemory, codeBase);
 
         var stackMark = allocatedMemory;
-        Interop.WriteProcessMemory(processHandle, stackMark, BitConverter.GetBytes(1));
+        Kernel32.WriteProcessMemory(processHandle, stackMark, BitConverter.GetBytes(1));
         allocatedMemory += 0x08;
 
         var exposedAppDomain = AllocateExposedAppDomain(&allocatedMemory, appDomain);
