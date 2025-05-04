@@ -1,1 +1,0 @@
-﻿record ProcedureLocalVariable(int Size, int Offset);
