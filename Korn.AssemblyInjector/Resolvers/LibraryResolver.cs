@@ -1,46 +1,24 @@
-﻿using Korn.Shared;
+﻿using Korn.Utils.PEImageReader;
+using Korn.Shared;
 using Korn.Utils;
-using Korn.Utils.PEImageReader;
 using System.Net;
 
-namespace Korn.AssemblyInjector;
+#pragma warning disable SYSLIB0014 // Type or member is obsolete
+namespace Korn.AssemblyInjection;
 internal unsafe class LibraryResolver : IDisposable
 {
-    public LibraryResolver(string moduleName, nint processHandle) : this(moduleName, processHandle, new(processHandle)) { }
-
-    public LibraryResolver(string moduleName, nint processHandle, ProcessModulesResolver modulesResolver)
+    public LibraryResolver(ExternalMemory memory, ExternalProcessModule module) 
     {
-        ProcessHandle = processHandle;
-        ModulesResolver = modulesResolver;
-
-        var module = ModulesResolver.ResolveModule(moduleName);
-        if (module is null)
-            throw new KornError([
-                "UnsafeInjector.LibraryResolver->.ctor(nint, ProcessModulesResolver):",
-                $"The module not found in target process"
-            ]);
-        ModuleHandle = module.ModuleHandle;
-
-        var kernelModule = ModulesResolver.ResolveModule("kernel32");
-        if (kernelModule is null)
-            throw new KornError([
-                "UnsafeInjector.LibraryResolver->.ctor(nint, ProcessModulesResolver):",
-               $"Kernel32 module not found in target process"
-            ]);
-        Kernel32Handle = kernelModule.ModuleHandle;
-
-        PEImage = new PEImage(module.Path);
+        ModuleHandle = module.Handle;
 
         var debugSymbolsPath = ResolveDebugSymbols(module.Path);
         PdbResolver = new PdbResolver(debugSymbolsPath);
+        PEImage = new PERuntimeImage(memory, (void*)ModuleHandle);
     }
 
-    public readonly nint ProcessHandle;
-    public readonly ProcessModulesResolver ModulesResolver;
     public readonly PdbResolver PdbResolver;
-    public readonly PEImage PEImage;
+    public readonly PERuntimeImage PEImage;
     public readonly nint ModuleHandle;
-    public readonly nint Kernel32Handle;
 
     string ResolveDebugSymbols(string modulePath)
     {
@@ -51,7 +29,6 @@ internal unsafe class LibraryResolver : IDisposable
         return debugSymbolsPath;
     }
 
-#pragma warning disable SYSLIB0014 // Type or member is obsolete
     void DownloadDebugSymbols(string modulePath, string debugSymbolsPath)
     {
         var pdbPath = PdbResolver.GetDebugSymbolsPathForExecutable(modulePath);
@@ -59,7 +36,7 @@ internal unsafe class LibraryResolver : IDisposable
         if (debugInfo is null)
             throw new KornError([
                 $"UnsafeInjector.LibraryResolver({GetType().Name})->DownloadDebugSymbols:",
-                $"Failed to get module's debug informationю"
+                $"Failed to get module's debug information"
             ]);
 
         var downloadUrl = debugInfo.GetMicrosoftDebugSymbolsCacheUrl();
@@ -73,13 +50,12 @@ internal unsafe class LibraryResolver : IDisposable
             throw new KornException($"UnsafeInjector.LibraryResolver({GetType().Name})->DownloadDebugSymbols: Exception thrown when downloading debug symbols from microsoft server", ex);
         }
     }
-#pragma warning restore SYSLIB0014 // Type or member is obsolete
 
     private protected nint Resolve(string name, string declaringType)
     {
         var symbol = PdbResolver.Resolve(name, declaringType);
         var sector = PEImage.GetSectionByNumber(symbol->Segment);
-        var offset = sector->VirtualAddress + symbol->SegmentOffset;
+        var offset = sector.VirtualAddress + symbol->SegmentOffset;
         return (nint)(ModuleHandle + offset);
     }
 
@@ -89,14 +65,7 @@ internal unsafe class LibraryResolver : IDisposable
         return (nint)(ModuleHandle + 0x1000/*header size*/ + symbol->HeaderOffset);
     }
 
-    public nint ResolveSleep()
-    {
-        var kernel32 = Interop.GetModuleHandle("kernel32");
-        var sleep = Interop.GetProcAddress(kernel32, "Sleep");
-        var offset = sleep - kernel32;
-        return Kernel32Handle + offset;
-    }
-
+    #region IDisposable
     bool disposed;
     public void Dispose()
     {
@@ -105,8 +74,8 @@ internal unsafe class LibraryResolver : IDisposable
         disposed = true;
 
         PdbResolver.Dispose();
-        PEImage.Dispose();
     }
 
     ~LibraryResolver() => Dispose();
+    #endregion
 }

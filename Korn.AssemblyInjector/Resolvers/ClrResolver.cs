@@ -1,8 +1,9 @@
-﻿namespace Korn.AssemblyInjector;
+﻿using Korn.Utils;
+
+namespace Korn.AssemblyInjection;
 internal unsafe class ClrResolver : LibraryResolver
 {
-    public ClrResolver(nint processHandle) : base("clr", processHandle, new(processHandle)) { }
-    public ClrResolver(nint processHandle, ProcessModulesResolver modulesResolver) : base("clr", processHandle, modulesResolver) { }
+    public ClrResolver(ExternalMemory memory, ExternalProcessModule module) : base(memory, module) { }
 
     public nint ResolveSystemDomainAddress() => Resolve("m_pSystemDomain", "SystemDomain");
     public nint ResolveSetupThread() => Resolve("SetupThread");

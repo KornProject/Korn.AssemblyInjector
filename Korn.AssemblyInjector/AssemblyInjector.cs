@@ -1,32 +1,38 @@
-﻿using Korn.Utils;
-using Korn.Utils.Assembler;
-using System.Diagnostics;
+﻿using Korn.Utils.Assembler;
 using System.Reflection;
 using System.Text;
+using Korn.Utils;
+using Korn.AssemblyInjection;
 
 #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
-namespace Korn.AssemblyInjector;
-public unsafe class UnsafeInjector : IDisposable
+namespace Korn;
+public unsafe class AssemblyInjector : IDisposable
 {
-    public UnsafeInjector(int pid)
-    {
-        process = new ExternalProcess(pid);
-        memory = process.Memory;
-        modulesResolver = new ProcessModulesResolver(processHandle);
+    static ulong 
+        coreclr_footprint = ExternalProcessModules.GetNameFootprint("coreclr.dll"),
+        clr_footprint = ExternalProcessModules.GetNameFootprint("clr.dll");
 
-        isCoreClr = modulesResolver.ResolveModule("coreclr") is not null;
-        if (!isCoreClr)
-            isClr = modulesResolver.ResolveModule("clr") is not null;
+    public AssemblyInjector(int pid)
+    {
+        processId = new ExternalProcessId(pid);
+        process = processId.Process;
+        modules = processId.Modules;
+        memory = process.Memory;
+
+        coreclrModule = modules.FastGetModule(coreclr_footprint);
+        if (!coreclrModule.IsValid)
+            clrModule = modules.FastGetModule(clr_footprint);
     }
 
-    ProcessModulesResolver modulesResolver;
+    ExternalProcessId processId;
+    ExternalProcessModules modules;
     ExternalProcess process;
     ExternalMemory memory;
-    bool isCoreClr;
-    bool isClr;
+    ExternalProcessModule coreclrModule;
+    ExternalProcessModule clrModule;
 
-    public bool IsCoreClr => isCoreClr;
-    public bool IsClr => isClr;
+    public bool IsCoreClr => coreclrModule.IsValid;
+    public bool IsClr => clrModule.IsValid;
 
     public void Inject(string path)
     {
@@ -49,16 +55,15 @@ public unsafe class UnsafeInjector : IDisposable
                 "Not found CLR in the target process."
             ]);
 
-        using var clrResolver = new ClrResolver(processHandle, modulesResolver);
+        using var clrResolver = new ClrResolver(memory, clrModule);
         var setupThreadFunction = clrResolver.ResolveSetupThread();
         var loadAssemblyFunction = clrResolver.ResolveLoadAssembly();
         var executeAssemblyFunction = clrResolver.ResolveExecuteAssembly();
         var removeThreadFunction = clrResolver.ResolveRemoveThread();
-        var sleepFunction = clrResolver.ResolveSleep();
 
         var systemDomainPointer = clrResolver.ResolveSystemDomainAddress();
-        var systemDomain = Kernel32.ReadProcessMemory<nint>(processHandle, systemDomainPointer);
-        var appDomain = Kernel32.ReadProcessMemory<nint>(processHandle, systemDomain + 0x560);
+        var systemDomain = memory.Read<nint>(systemDomainPointer);
+        var appDomain = memory.Read<nint>(systemDomain + 0x560);
 
         var allocatedMemory = AllocateMemory();
         var data = allocatedMemory;
@@ -67,7 +72,7 @@ public unsafe class UnsafeInjector : IDisposable
         var assemblyName = AllocateAssemblyName(&allocatedMemory, codeBase);
 
         var stackMark = allocatedMemory;
-        Kernel32.WriteProcessMemory(processHandle, stackMark, BitConverter.GetBytes(1));
+        memory.Write(stackMark, 1);
         allocatedMemory += 0x08;
 
         var exposedAppDomain = AllocateExposedAppDomain(&allocatedMemory, appDomain);
@@ -114,38 +119,34 @@ public unsafe class UnsafeInjector : IDisposable
         ->CallRax()
 
         ->MovRspR13()
-
-        ->MovRcx64(0xFFFFFFFF)
-        ->MovRax64(sleepFunction)
-        ->CallRax()
-
         ->Ret();
 
-        Interop.WriteProcessMemory(processHandle, allocatedMemory, shellcode, (int)(*(byte**)endShellcode - shellcode));
+        memory.Write(allocatedMemory, shellcode, (int)(*(byte**)endShellcode - shellcode));
 
-        var threadID = Interop.CreateRemoteThread(processHandle, 0, 0, code, data, 0, (nint*)0);
+        process.CreateThread(code, data);
 
-        nint AllocateString(nint* memory, string text)
+        nint AllocateString(nint* addressPointer, string text)
         {
-            var address = *memory;
+            var address = *addressPointer;
             var size = sizeof(nint) + sizeof(int) + text.Length * 2;
-            *memory += size;
-            Interop.WriteProcessMemory(processHandle, address, *(byte**)&text, size);
+            *addressPointer += size;
+
+            memory.Write(address, *(byte**)&text, size); /* unsafe */
 
             return address;
         }
 
-        nint AllocateAssemblyName(nint* memory, nint codeBase)
+        nint AllocateAssemblyName(nint* addressPointer, nint codeBase)
         {
-            var address = *memory;
+            var address = *addressPointer;
 
             var size = SizeOf<AssemblyName>();
-            *memory += size;
+            *addressPointer += size;
 
             WriteCodeBase(codeBase);
             return address;
 
-            void WriteCodeBase(nint name) => Interop.WriteProcessMemory(processHandle, address + 0x28, (byte*)&name, sizeof(nint));
+            void WriteCodeBase(nint name) => memory.Write(address + 0x28, (byte*)&name, sizeof(nint));
         }
 
         nint AllocateArgs(nint* memory)
@@ -158,17 +159,17 @@ public unsafe class UnsafeInjector : IDisposable
             return address;
         }
 
-        nint AllocateExposedAppDomain(nint* memory, nint appDomain)
+        nint AllocateExposedAppDomain(nint* addressPointer, nint appDomain)
         {
-            var address = *memory;
+            var address = *addressPointer;
 
             var size = 0xC8;
-            *memory += size;
+            *addressPointer += size;
 
             WriteAppDomain(appDomain);
             return address;
 
-            void WriteAppDomain(nint appDomain) => Interop.WriteProcessMemory(processHandle, address + 0xC0, appDomain);
+            void WriteAppDomain(nint appDomain) => memory.Write(address + 0xC0, appDomain);
         }
 
         int SizeOf<T>() => *((int*)typeof(T).TypeHandle.Value + 1);
@@ -185,20 +186,19 @@ public unsafe class UnsafeInjector : IDisposable
         // const uint MEM_RELEASE = 0x00008000;
         // const uint INFINITE = 0xFFFFFFFF;
 
-        using var coreClrResolver = new CoreClrResolver(processHandle, modulesResolver);
+        using var coreClrResolver = new CoreClrResolver(memory, coreclrModule);
         var setupThreadFunction = coreClrResolver.ResolveSetupThread();
         var initializeFunction = coreClrResolver.ResolveInitializeAssemblyLoadContext();
         var loadAssemblyFunction = coreClrResolver.ResolveLoadFromPath();
         var executeMainFunction = coreClrResolver.ResolveExecuteMainMethod();
         var removeThreadFunction = coreClrResolver.ResolveRemoveThread();
-        var sleepFunction = coreClrResolver.ResolveSleep();
 
         var assemblyBinder = GetAssemblyBinder();
 
         var allocatedMemory = AllocateMemory();
         var data = allocatedMemory;
         var pathBytes = Encoding.Unicode.GetBytes(path);
-        Interop.WriteProcessMemory(processHandle, allocatedMemory, pathBytes);
+        memory.Write(allocatedMemory, pathBytes);
         allocatedMemory += pathBytes.Length + 2;
 
         var localLoadedAssembly = allocatedMemory;
@@ -208,7 +208,7 @@ public unsafe class UnsafeInjector : IDisposable
         allocatedMemory += 0x18;
 
         var localArgumentsArrayPointer = allocatedMemory;
-        Interop.WriteProcessMemory(processHandle, localArgumentsArrayPointer, BitConverter.GetBytes(localArgumentsArray));
+        memory.Write(localArgumentsArrayPointer, localArgumentsArray);
         allocatedMemory += 0x08;
                
         var code = allocatedMemory;
@@ -248,15 +248,11 @@ public unsafe class UnsafeInjector : IDisposable
 
         ->MovRspR13()
 
-        ->MovRcx64(0xFFFFFFFF)
-        ->MovRax64(sleepFunction)
-        ->CallRax()
-
         ->Ret();
 
-        Interop.WriteProcessMemory(processHandle, allocatedMemory, shellcode, (int)(*(byte**)endShellcode - shellcode));
+        memory.Write(allocatedMemory, shellcode, (int)(*(byte**)endShellcode - shellcode));
 
-        var threadID = Interop.CreateRemoteThread(processHandle, 0, 0, code, data, 0, (nint*)0);
+        process.CreateThread(code, data);
         /* Removed for reasons of the second argument not working. See [Dec 12 #1] in Notes.txt */
         //Interop.WaitForSingleObject(threadID, INFINITE);
         //Interop.VirtualFreeEx(processHandle, allocatedMemory, 0x1000, MEM_RELEASE);
@@ -264,21 +260,15 @@ public unsafe class UnsafeInjector : IDisposable
         // Offsets of structures may be change with different .net x.0.0 versions. Required tests
         // &TheAppDomain->RootAssembly->PEAssembly->HostAssembly->AssemblyBinder
         nint GetAssemblyBinder() =>
-            Interop.ReadProcessMemory<nint>(processHandle,
-                Interop.ReadProcessMemory<nint>(processHandle,
-                    Interop.ReadProcessMemory<nint>(processHandle,
-                        Interop.ReadProcessMemory<nint>(processHandle,
-                            Interop.ReadProcessMemory<nint>(processHandle,
+            memory.Read<nint>(
+                memory.Read<nint>(
+                    memory.Read<nint>(
+                        memory.Read<nint>(
+                            memory.Read<nint>(
                                 coreClrResolver.ResolveAppDomainAddress()) + 0x590) + 0x20) + 0x38) + 0x20);
     }
 
-    nint AllocateMemory(int size = 0x1000)
-    {
-        const int MEM_COMMIT = 0x1000;
-        const int PAGE_EXECUTE_READWRITE = 0x40;
-
-        return Interop.VirtualAllocEx(processHandle, 0, (uint)size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-    }
+    nint AllocateMemory(int size = 0x1000) => ExternalMemoryAllocator.Allocate(process.Handle, IntPtr.Zero, size);
 
     bool disposed;
     public void Dispose()
@@ -287,10 +277,9 @@ public unsafe class UnsafeInjector : IDisposable
             return;
         disposed = true;
 
-        if (processHandle != 0)
-            Interop.CloseHandle(processHandle);
+        processId.Dispose();
     }
 
-    ~UnsafeInjector() => Dispose();
+    ~AssemblyInjector() => Dispose();
 }
 #pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
