@@ -1,35 +1,31 @@
-﻿using Korn.Utils.Assembler;
+﻿using Korn.Utils;
 using System.Reflection;
 using System.Text;
-using Korn.Utils;
 using Korn.AssemblyInjection;
+using System.Runtime.InteropServices;
 
 #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
 namespace Korn;
-public unsafe class AssemblyInjector : IDisposable
+public unsafe class AssemblyInjector
 {
-    static ulong 
-        coreclr_footprint = ExternalProcessModules.GetNameFootprint("coreclr.dll"),
-        clr_footprint = ExternalProcessModules.GetNameFootprint("clr.dll");
-
-    public AssemblyInjector(int pid)
+    public AssemblyInjector(Process process)
     {
-        processId = new ExternalProcessId(pid);
-        process = processId.Process;
-        modules = processId.Modules;
-        memory = process.Memory;
+        this.process = process;
+        processHandle = process.Handle;
+        modules = process.Modules;
+        memory = processHandle.Memory;
 
-        coreclrModule = modules.FastGetModule(coreclr_footprint);
+        coreclrModule = modules.GetModule("coreclr.dll");
         if (!coreclrModule.IsValid)
-            clrModule = modules.FastGetModule(clr_footprint);
+            clrModule = modules.GetModule("clr.dll");
     }
 
-    ExternalProcessId processId;
-    ExternalProcessModules modules;
-    ExternalProcess process;
-    ExternalMemory memory;
-    ExternalProcessModule coreclrModule;
-    ExternalProcessModule clrModule;
+    Process process;
+    ProcessModuleCollection modules;
+    ProcessHandle processHandle;
+    ProcessMemory memory;
+    ProcessModule coreclrModule;
+    ProcessModule clrModule;
 
     public bool IsCoreClr => coreclrModule.IsValid;
     public bool IsClr => clrModule.IsValid;
@@ -42,16 +38,16 @@ public unsafe class AssemblyInjector : IDisposable
             InjectInClr(path);
         else
             throw new KornError([
-                "UnsafeInjector->.Inject: ",
+                "UnsafeInjector->Inject: ",
                 "Not found any VM in the target process."
             ]);
     }
 
-    public void InjectInClr(string path)
+    public ProcessThreadHandle InjectInClr(string path)
     {
         if (!IsClr)
             throw new KornError([
-                "UnsafeInjector->.InjectInClr: ",
+                "UnsafeInjector->InjectInClr: ",
                 "Not found CLR in the target process."
             ]);
 
@@ -123,15 +119,20 @@ public unsafe class AssemblyInjector : IDisposable
 
         memory.Write(allocatedMemory, shellcode, (int)(*(byte**)endShellcode - shellcode));
 
-        process.CreateThread(code, data);
+        var thread = processHandle.CreateThread(code, data);
+
+        return thread;
 
         nint AllocateString(nint* addressPointer, string text)
         {
+            var textHandle = GCHandle.Alloc(text, GCHandleType.Pinned);
+
             var address = *addressPointer;
             var size = sizeof(nint) + sizeof(int) + text.Length * 2;
             *addressPointer += size;
 
-            memory.Write(address, *(byte**)&text, size); /* unsafe */
+            memory.Write(address, *(byte**)&text, size);
+            textHandle.Free();
 
             return address;
         }
@@ -175,16 +176,15 @@ public unsafe class AssemblyInjector : IDisposable
         int SizeOf<T>() => *((int*)typeof(T).TypeHandle.Value + 1);
     }
 
-    public void InjectInCoreClr(string path)
+    public ProcessThreadHandle InjectInCoreClr(string path)
     {
         if (!IsCoreClr)
             throw new KornError([
-                "UnsafeInjector->.InjectInCoreClr: ",
+                "UnsafeInjector->InjectInCoreClr: ",
                 "Not found CoreCLR in the target process."
             ]);
 
         // const uint MEM_RELEASE = 0x00008000;
-        // const uint INFINITE = 0xFFFFFFFF;
 
         using var coreClrResolver = new CoreClrResolver(memory, coreclrModule);
         var setupThreadFunction = coreClrResolver.ResolveSetupThread();
@@ -252,10 +252,12 @@ public unsafe class AssemblyInjector : IDisposable
 
         memory.Write(allocatedMemory, shellcode, (int)(*(byte**)endShellcode - shellcode));
 
-        process.CreateThread(code, data);
+        var thread = processHandle.CreateThread(code, data);
         /* Removed for reasons of the second argument not working. See [Dec 12 #1] in Notes.txt */
-        //Interop.WaitForSingleObject(threadID, INFINITE);
+        // thread.Join(); /*Interop.WaitForSingleObject(threadID, INFINITE);*/
         //Interop.VirtualFreeEx(processHandle, allocatedMemory, 0x1000, MEM_RELEASE);
+
+        return thread;
 
         // Offsets of structures may be change with different .net x.0.0 versions. Required tests
         // &TheAppDomain->RootAssembly->PEAssembly->HostAssembly->AssemblyBinder
@@ -268,18 +270,6 @@ public unsafe class AssemblyInjector : IDisposable
                                 coreClrResolver.ResolveAppDomainAddress()) + 0x590) + 0x20) + 0x38) + 0x20);
     }
 
-    nint AllocateMemory(int size = 0x1000) => ExternalMemoryAllocator.Allocate(process.Handle, IntPtr.Zero, size);
-
-    bool disposed;
-    public void Dispose()
-    {
-        if (disposed)
-            return;
-        disposed = true;
-
-        processId.Dispose();
-    }
-
-    ~AssemblyInjector() => Dispose();
+    nint AllocateMemory(int size = 0x1000) => ProcessMemoryAllocator.AllocateRegion(processHandle.Handle, IntPtr.Zero, size);
 }
 #pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type

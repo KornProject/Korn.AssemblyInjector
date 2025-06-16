@@ -7,7 +7,7 @@ using System.Net;
 namespace Korn.AssemblyInjection;
 internal unsafe class LibraryResolver : IDisposable
 {
-    public LibraryResolver(ExternalMemory memory, ExternalProcessModule module) 
+    public LibraryResolver(ProcessMemory memory, ProcessModule module) 
     {
         ModuleHandle = module.Handle;
 

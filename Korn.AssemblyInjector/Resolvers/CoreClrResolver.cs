@@ -3,7 +3,7 @@
 namespace Korn.AssemblyInjection;
 internal unsafe class CoreClrResolver : LibraryResolver
 {
-    public CoreClrResolver(ExternalMemory memory, ExternalProcessModule module) : base(memory, module) { }
+    public CoreClrResolver(ProcessMemory memory, ProcessModule module) : base(memory, module) { }
 
     public nint ResolveAppDomainAddress() => Resolve("m_pTheAppDomain", "AppDomain");
     public nint ResolveSetupThread() => Resolve("SetupThread");
