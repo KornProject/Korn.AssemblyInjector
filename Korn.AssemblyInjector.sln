@@ -22,7 +22,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Korn.Utils.PDBResolver", ".
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Korn.Core", "..\Korn.Core\Korn.Core\Korn.Core.csproj", "{B642F4E8-F90E-4582-BDEE-1C113E767790}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Korn.Utils.Assembler", "..\Korn.Utils.Assembler\Korn.Utils.Assembler\Korn.Utils.Assembler.csproj", "{F3789DA9-A125-4FB4-901B-75244A5F2F0F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Korn.Modules.Assembler", "..\Korn.Modules.Assembler\Korn.Modules.Assembler\Korn.Modules.Assembler.csproj", "{F3789DA9-A125-4FB4-901B-75244A5F2F0F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
