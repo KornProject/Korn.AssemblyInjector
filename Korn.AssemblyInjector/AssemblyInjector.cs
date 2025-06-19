@@ -1,8 +1,9 @@
-﻿using Korn.Utils;
+﻿using Korn.AssemblyInjection;
+using Korn.Logger;
+using Korn.Utils;
 using System.Reflection;
-using System.Text;
-using Korn.AssemblyInjection;
 using System.Runtime.InteropServices;
+using System.Text;
 
 #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
 namespace Korn;

@@ -1,6 +1,7 @@
-﻿using Korn.Utils.PEImageReader;
+﻿using Korn.Logger;
 using Korn.Shared;
 using Korn.Utils;
+using Korn.Utils.PEImageReader;
 using System.Net;
 
 #pragma warning disable SYSLIB0014 // Type or member is obsolete
@@ -13,7 +14,7 @@ internal unsafe class LibraryResolver : IDisposable
 
         var debugSymbolsPath = ResolveDebugSymbols(module.Path);
         PdbResolver = new PdbResolver(debugSymbolsPath);
-        PEImage = new PERuntimeImage(memory, (void*)ModuleHandle);
+        PEImage = new PERuntimeImage(memory, ModuleHandle);
     }
 
     public readonly PdbResolver PdbResolver;
